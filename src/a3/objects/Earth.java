@@ -15,8 +15,8 @@ public class Earth extends WorldObject {
         //float[] cp = {1.0f, 0.0f, 0.0f, 0.0f};
         //clipPlane = cp;
         //myShape = new ImportedModel("src/a3/shuttle.obj");
-        //myShape = new Sphere(48);
-        myShape = new Tetrahedron();
+        myShape = new Sphere(48);
+        //myShape = new Tetrahedron();
         myMaterial = new Material(
                 new float[]{0.3F, 0.3F, 0.4F, 1.0F}, // ambient
                 new float[]{0.6F, 0.6F, 0.9F, 1.0F}, // diffuse

@@ -2,6 +2,7 @@ package a3.objects;
 
 import a3.IdentityLocs;
 import com.jogamp.opengl.GL;
+import com.jogamp.opengl.GL2GL3;
 import com.jogamp.opengl.GL4;
 import com.jogamp.opengl.GLAutoDrawable;
 import graphicslib3D.Matrix3D;
@@ -35,6 +36,8 @@ public class ClippedObject extends WorldObject {
         gl.glUniformMatrix4fv(IdentityLocs.getProjLoc(), 1, false, pMat.getFloatValues(), 0);
         gl.glUniformMatrix4fv(IdentityLocs.getnlocation(), 1, false, (mvStack.peek().inverse().transpose().getFloatValues()), 0);
         gl.glProgramUniform4fv(IdentityLocs.getRendProg(), IdentityLocs.getClip_plane(), 1, clipPlane, 0);
+
+        gl.glEnable(GL2GL3.GL_CLIP_DISTANCE0);
 
         // bind vertex values
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);

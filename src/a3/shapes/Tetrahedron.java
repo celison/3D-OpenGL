@@ -7,7 +7,7 @@ import graphicslib3D.Vertex3D;
 /**
  * Created by Connor on 10/23/2015.
  */
-public class Tetrahedron extends Shape3D implements IShape {
+public class  Tetrahedron extends Shape3D implements IShape {
     private int[] indicies;
     private Vertex3D[] verticies;
 
