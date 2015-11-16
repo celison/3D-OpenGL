@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="jogl-demos">
+    <CLASSES>
+      <root url="jar://C:/Program Files/JOGL/jogl-demos/jar/jogl-demos.jar!/" />
+      <root url="jar://C:/Program Files/JOGL/jogl-demos/jar/jogl-demos-util.jar!/" />
+      <root url="jar://C:/Program Files/JOGL/jogl-demos/jar/jogl-demos-data.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://C:/Program Files/JOGL/jogl-demos/jar/jogl-demos-data.jar!/" />
+    </SOURCES>
+  </library>
+</component>
