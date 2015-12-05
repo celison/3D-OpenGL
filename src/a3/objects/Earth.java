@@ -2,7 +2,6 @@ package a3.objects;
 
 import a3.ImportedModel;
 import a3.shapes.Sphere;
-import a3.shapes.TestShape;
 import a3.shapes.Tetrahedron;
 import graphicslib3D.Material;
 import graphicslib3D.Matrix3D;

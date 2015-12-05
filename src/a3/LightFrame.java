@@ -632,7 +632,6 @@ public class LightFrame extends JFrame implements GLEventListener, KeyListener, 
     }
 
     private void togglePosLighting() {
-
         if (showPosLight) { // lights are on so turn them off
             float[] amb = {0.0f,0.0f,0.0f,1.0f};
             pl.setAmbient(amb);
