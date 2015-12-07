@@ -22,10 +22,10 @@ public class Ball extends WorldObject {
         setTextureURL(texturePath);
         setRotationRate(0, 1, 0);
         Matrix3D scale = new Matrix3D();
-        scale.scale(2, 2, 2);
+        scale.scale(.25, .25, .25);
         setScale(scale);
         Matrix3D startPos = new Matrix3D();
-        startPos.translate(0, 0, -15);
+        startPos.translate(0, 0, 0);
         setTranslation(startPos);
     }
 }

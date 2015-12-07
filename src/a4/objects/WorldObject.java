@@ -176,7 +176,6 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
         gl.glEnableVertexAttribArray(0);
 
-        gl.glClear(GL_DEPTH_BUFFER_BIT);
         gl.glEnable(GL_CULL_FACE);
         gl.glFrontFace(GL_CCW);
         gl.glEnable(GL_DEPTH_TEST);
@@ -231,7 +230,6 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         gl.glVertexAttribPointer(1, 3, GL.GL_FLOAT, false, 0, 0);
         gl.glEnableVertexAttribArray(1);
 
-        gl.glClear(GL_DEPTH_BUFFER_BIT);
         gl.glEnable(GL_CULL_FACE);
         gl.glFrontFace(GL_CCW);
         gl.glEnable(GL_DEPTH_TEST);

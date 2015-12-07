@@ -112,17 +112,20 @@ public class ShadowFrame extends JFrame
         myCanvas.addMouseWheelListener(this);
 
         worldObjectList = new Vector<>();
+        for (int i = 0; i < 27; i++) {
+            Ball ball = new Ball();
+            int x = i % 3;
+            int y = (i / 3) % 3;
+            int z = (i / 9) % 3;
+            System.out.println(i + ": " + x + ", " + y + ", " + z);
+            ball.translate(x, y, z);
+            worldObjectList.add(ball);
+        }
 
         FPSAnimator animator = new FPSAnimator(myCanvas, 30);
         animator.start();
 
         setVisible(true);
-
-        worldObjectList.add(new Ball());
-        Ball b2 = new Ball();
-        b2.translate(0,0,5);
-
-        worldObjectList.add(b2);
     }
 
     private void togglePosLighting() {
@@ -253,7 +256,7 @@ public class ShadowFrame extends JFrame
         gl.glGenVertexArrays(vao.length, vao, 0);
         gl.glBindVertexArray(vao[0]);
 
-        gl.glGenBuffers(vbo.length,  vbo, 0);
+        gl.glGenBuffers(vbo.length, vbo, 0);
 
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
         FloatBuffer vertBuf = FloatBuffer.wrap(fvalues);
@@ -271,6 +274,7 @@ public class ShadowFrame extends JFrame
             worldObject.setupBuffers(gl, vbo, index);
             index += 3;
         }
+
     }
 
     private void installLights(Matrix3D v_matrix, GLAutoDrawable drawable) {
@@ -350,7 +354,7 @@ public class ShadowFrame extends JFrame
         setupShadowBuffers(drawable);
         // instantiate positional light and set location (using default amb, diff, spec settings)
         pl = new PositionalLight();
-        plocation = new Point3D(0, 0, 0);
+        plocation = new Point3D(0, 0, 5);
         pl.setPosition(plocation);
 
         mvStack = new MatrixStack(20);
@@ -359,6 +363,23 @@ public class ShadowFrame extends JFrame
         for (WorldObject worldObject : worldObjectList) {
             worldObject.init(drawable);
         }
+
+        b.setElementAt(0, 0, 0.5);
+        b.setElementAt(0, 1, 0.0);
+        b.setElementAt(0, 2, 0.0);
+        b.setElementAt(0, 3, 0.5f);
+        b.setElementAt(1, 0, 0.0);
+        b.setElementAt(1, 1, 0.5);
+        b.setElementAt(1, 2, 0.0);
+        b.setElementAt(1, 3, 0.5f);
+        b.setElementAt(2, 0, 0.0);
+        b.setElementAt(2, 1, 0.0);
+        b.setElementAt(2, 2, 0.5);
+        b.setElementAt(2, 3, 0.5f);
+        b.setElementAt(3, 0, 0.0);
+        b.setElementAt(3, 1, 0.0);
+        b.setElementAt(3, 2, 0.0);
+        b.setElementAt(3, 3, 1.0f);
 
         // set camera position
 
@@ -380,7 +401,7 @@ public class ShadowFrame extends JFrame
     @Override
     public void display(GLAutoDrawable drawable) {
         GL4 gl = (GL4) drawable.getGL();
-
+        pl.setPosition(plocation);
         //Clean Background
         gl.glClear(GL_DEPTH_BUFFER_BIT);
         FloatBuffer background = FloatBuffer.allocate(4);
@@ -413,12 +434,42 @@ public class ShadowFrame extends JFrame
 
         // Draw Light Source
 
+
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
+        gl.glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex[0], 0);
+
+        gl.glDrawBuffer(GL.GL_NONE);
+        gl.glEnable(GL_DEPTH_TEST);
+
+        gl.glEnable(GL_POLYGON_OFFSET_FILL);    // for reducing
+        gl.glPolygonOffset(2.0f, 4.0f);            //  shadow artifacts
+
+        Point3D origin = new Point3D(0.0, 0.0, 0.0);
+        Vector3D up = new Vector3D(0.0, 1.0, 0.0);
+
+        Matrix3D lightV_matrix = lookAt(pl.getPosition(), origin, up);
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        for (WorldObject worldObject : worldObjectList) {
+            worldObject.firstPass(drawable, lightV_matrix, pMat);
+        }
+
+        gl.glDisable(GL_POLYGON_OFFSET_FILL);    // artifact reduction, continued
+
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.glActiveTexture(gl.GL_TEXTURE0);
+        gl.glBindTexture(GL_TEXTURE_2D, shadow_tex[0]);
+        gl.glDrawBuffer(GL.GL_FRONT);
+
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        for (WorldObject worldObject : worldObjectList) {
+            currentMaterial = worldObject.getMaterial();
+            installLights(mvStack.peek(), drawable);
+            worldObject.secondPass(drawable, mvStack.peek(), pMat, b, lightV_matrix);
+        }
         if (showPosLight) {
             gl.glUseProgram(lightPointRenderingProgram);
             mvLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "mv_matrix");
             projLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "proj_matrix");
-
-            pl.setPosition(plocation);
 
             // draw small cube to represent positional lighting
 
@@ -441,42 +492,6 @@ public class ShadowFrame extends JFrame
 
             gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getIndices().length);
             mvStack.popMatrix();
-        }
-
-        gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
-        gl.glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex[0], 0);
-
-        gl.glDrawBuffer(GL.GL_NONE);
-        gl.glEnable(GL_DEPTH_TEST);
-
-        gl.glEnable(GL_POLYGON_OFFSET_FILL);    // for reducing
-        gl.glPolygonOffset(2.0f, 4.0f);            //  shadow artifacts
-
-        Point3D origin = new Point3D(0.0, 0.0, 0.0);
-        Vector3D up = new Vector3D(0.0, 1.0, 0.0);
-
-        Matrix3D lightV_matrix = lookAt(pl.getPosition(), origin, up);
-
-        for (WorldObject worldObject : worldObjectList) {
-            worldObject.firstPass(drawable, lightV_matrix, pMat);
-        }
-
-        gl.glDisable(GL_POLYGON_OFFSET_FILL);    // artifact reduction, continued
-
-        gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        gl.glActiveTexture(gl.GL_TEXTURE0);
-        gl.glBindTexture(GL_TEXTURE_2D, shadow_tex[0]);
-        gl.glDrawBuffer(GL.GL_FRONT);
-
-        v_mat.setToIdentity();
-        v_mat.concatenate(cameraTranslation);
-        v_mat.concatenate(cameraRotation);
-
-
-        for (WorldObject worldObject : worldObjectList) {
-            currentMaterial = worldObject.getMaterial();
-            installLights(mvStack.peek(), drawable);
-            worldObject.secondPass(drawable, v_mat, pMat,b, lightV_matrix);
         }
     }
 
