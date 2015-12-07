@@ -10,10 +10,10 @@ import graphicslib3D.Vector3D;
  * Created by Connor on 11/11/2015.
  */
 public class Dome extends ClippedObject {
+    private final String texturePath = "src/a3/moon.jpg";
     public Dome() {
         float[] cp = {0.0f, 1.0f, 0.0f, 0.8f};
         clipPlane = cp;
-        //myShape = new ImportedModel("src/a3/shuttle.obj");
         myShape = new Sphere(48);
         myMaterial = new Material(
                 new float[]{0.135F, 0.2225F, 0.1575F, 0.95F}, // ambient
@@ -21,7 +21,7 @@ public class Dome extends ClippedObject {
                 new float[]{0.3162F, 0.3162F, 0.3162F, 0.95F}, // specular
                 new float[]{0.0F, 0.0F, 0.0F, 1.0F}, // emission
                 12.8F); // shininess
-        setTextureURL("src/a3/moon.jpg");
+        setTextureURL(texturePath);
         setTranslationRate(0,.0,0);
         setRotationRate(0,0,0);
         Matrix3D scale = new Matrix3D();

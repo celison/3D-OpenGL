@@ -23,10 +23,10 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
     protected int index;
     protected int dxRotate, dyRotate, dzRotate;
     protected double dxTranslate, dyTranslate, dzTranslate;
-
+    protected int mv_location,proj_location, n_location;
     private TextureReader tr = new TextureReader();
     protected int texture;
-
+    protected Matrix3D shadowMVP1, shadowMVP2, m_matrix, mv_matrix;
     protected String textureURL;
 
     protected Vector<IGLDrawable> orbitList;
@@ -62,53 +62,57 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
     @Override
     public void init(GLAutoDrawable drawable) {
+        shadowMVP1 = new Matrix3D();
+        shadowMVP2 = new Matrix3D();
+        m_matrix = new Matrix3D();
+        mv_matrix = new Matrix3D();
         texture = tr.loadTexture(drawable, textureURL);
     }
 
-    @Override
-    public void draw(GLAutoDrawable glAutoDrawable, MatrixStack mvStack, Matrix3D pMat) {
-        GL4 gl = (GL4) glAutoDrawable.getGL();
-
-        mvStack.pushMatrix(); // push translate
-        translate(dxTranslate, dyTranslate, dzTranslate);
-        mvStack.multMatrix(getTranslation());
-        mvStack.pushMatrix(); // push rotate
-
-        rotate(dxRotate, dyRotate, dzRotate);
-        mvStack.multMatrix(getRotation());
-        mvStack.multMatrix(getScale());
-
-        gl.glUniformMatrix4fv(IdentityLocs.getMvLoc(), 1, false, mvStack.peek().getFloatValues(), 0);
-        gl.glUniformMatrix4fv(IdentityLocs.getProjLoc(), 1, false, pMat.getFloatValues(), 0);
-        gl.glUniformMatrix4fv(IdentityLocs.getnlocation(), 1, false, (mvStack.peek().inverse().transpose().getFloatValues()), 0);
-
-        // bind vertex values
-        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);
-        gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
-        gl.glEnableVertexAttribArray(0);
-
-        // bind normal values
-        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 2]);
-        gl.glVertexAttribPointer(1, 3, GL.GL_FLOAT, false, 0, 0);
-        gl.glEnableVertexAttribArray(1);
-
-        // bind texture values
-        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 1]);
-        gl.glVertexAttribPointer(2, 2, GL.GL_FLOAT, false, 0, 0);
-        gl.glEnableVertexAttribArray(2);
-
-        gl.glActiveTexture(gl.GL_TEXTURE0);
-        gl.glBindTexture(gl.GL_TEXTURE_2D, texture);
-
-        gl.glEnable(GL_CULL_FACE);
-        gl.glFrontFace(GL_CCW);
-        gl.glEnable(GL_DEPTH_TEST);
-        gl.glDepthFunc(GL_LEQUAL);
-        // draw arrays
-        gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
-        mvStack.popMatrix(); // pop rotate
-        mvStack.popMatrix(); // pop translate
-    }
+//    @Override
+//    public void draw(GLAutoDrawable glAutoDrawable, MatrixStack mvStack, Matrix3D pMat) {
+//        GL4 gl = (GL4) glAutoDrawable.getGL();
+//
+//        mvStack.pushMatrix(); // push translate
+//        translate(dxTranslate, dyTranslate, dzTranslate);
+//        mvStack.multMatrix(getTranslation());
+//        mvStack.pushMatrix(); // push rotate
+//
+//        rotate(dxRotate, dyRotate, dzRotate);
+//        mvStack.multMatrix(getRotation());
+//        mvStack.multMatrix(getScale());
+//
+//        gl.glUniformMatrix4fv(IdentityLocs.getMvLoc(), 1, false, mvStack.peek().getFloatValues(), 0);
+//        gl.glUniformMatrix4fv(IdentityLocs.getProjLoc(), 1, false, pMat.getFloatValues(), 0);
+//        gl.glUniformMatrix4fv(IdentityLocs.getnlocation(), 1, false, (mvStack.peek().inverse().transpose().getFloatValues()), 0);
+//
+//        // bind vertex values
+//        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);
+//        gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+//        gl.glEnableVertexAttribArray(0);
+//
+//        // bind normal values
+//        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 2]);
+//        gl.glVertexAttribPointer(1, 3, GL.GL_FLOAT, false, 0, 0);
+//        gl.glEnableVertexAttribArray(1);
+//
+//        // bind texture values
+//        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 1]);
+//        gl.glVertexAttribPointer(2, 2, GL.GL_FLOAT, false, 0, 0);
+//        gl.glEnableVertexAttribArray(2);
+//
+//        gl.glActiveTexture(gl.GL_TEXTURE0);
+//        gl.glBindTexture(gl.GL_TEXTURE_2D, texture);
+//
+//        gl.glEnable(GL_CULL_FACE);
+//        gl.glFrontFace(GL_CCW);
+//        gl.glEnable(GL_DEPTH_TEST);
+//        gl.glDepthFunc(GL_LEQUAL);
+//        // draw arrays
+//        gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+//        mvStack.popMatrix(); // pop rotate
+//        mvStack.popMatrix(); // pop translate
+//    }
 
     public void setupBuffers(GL4 gl, int[] vbo, int index) {
         this.vbo = vbo;
@@ -147,5 +151,92 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
     public Material getMaterial() {
         return myMaterial;
+    }
+
+    public void firstPass(GLAutoDrawable drawable, Matrix3D lightV_matrix, Matrix3D lightP_matrix)
+    {	GL4 gl = (GL4) drawable.getGL();
+
+        gl.glUseProgram(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM1));
+
+        // draw the shape
+        m_matrix.setToIdentity();
+        m_matrix.concatenate(getTranslation());
+        m_matrix.concatenate(getRotation());
+        m_matrix.concatenate(getScale());
+
+        shadowMVP1.setToIdentity();
+        shadowMVP1.concatenate(lightP_matrix);
+        shadowMVP1.concatenate(lightV_matrix);
+        shadowMVP1.concatenate(m_matrix);
+        int shadow_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM1), "shadowMVP");
+        gl.glUniformMatrix4fv(shadow_location, 1, false, shadowMVP1.getFloatValues(), 0);
+
+        // set up vertices buffer
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);
+        gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(0);
+
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        gl.glEnable(GL_CULL_FACE);
+        gl.glFrontFace(GL_CCW);
+        gl.glEnable(GL_DEPTH_TEST);
+        gl.glDepthFunc(GL_LEQUAL);
+
+        gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+    }
+
+    public void secondPass(GLAutoDrawable drawable, Matrix3D v_matrix, Matrix3D proj_mat, Matrix3D b, Matrix3D lightV_matrix)
+    {	GL4 gl = (GL4) drawable.getGL();
+
+        gl.glUseProgram(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2));
+
+        // draw the torus
+
+        mv_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "mv_matrix");
+        proj_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "proj_matrix");
+        n_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "normalMat");
+        int shadow_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2),  "shadowMVP");
+
+        //  build the MODEL matrix
+        m_matrix.setToIdentity();
+        m_matrix.concatenate(getTranslation());
+        m_matrix.concatenate(getRotation());
+        m_matrix.concatenate(getScale());
+
+        //  build the MODEL-VIEW matrix
+        mv_matrix.setToIdentity();
+        mv_matrix.concatenate(v_matrix);
+        mv_matrix.concatenate(m_matrix);
+
+        shadowMVP2.setToIdentity();
+        shadowMVP2.concatenate(b);
+        shadowMVP2.concatenate(proj_mat);
+        shadowMVP2.concatenate(lightV_matrix);
+        shadowMVP2.concatenate(m_matrix);
+
+        //  put the MV and PROJ matrices into the corresponding uniforms
+        gl.glUniformMatrix4fv(mv_location, 1, false, mv_matrix.getFloatValues(), 0);
+        gl.glUniformMatrix4fv(proj_location, 1, false, proj_mat.getFloatValues(), 0);
+        gl.glUniformMatrix4fv(n_location, 1, false, (mv_matrix.inverse()).transpose().getFloatValues(), 0);
+        gl.glUniformMatrix4fv(shadow_location, 1, false, shadowMVP2.getFloatValues(), 0);
+
+        // set up vertices buffer
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);
+        gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(0);
+
+        // set up normals buffer
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 2]);
+        gl.glVertexAttribPointer(1, 3, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(1);
+
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        gl.glEnable(GL_CULL_FACE);
+        gl.glFrontFace(GL_CCW);
+        gl.glEnable(GL_DEPTH_TEST);
+        gl.glDepthFunc(GL_LEQUAL);
+
+        gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
     }
 }

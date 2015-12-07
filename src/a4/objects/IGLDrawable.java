@@ -9,7 +9,7 @@ import graphicslib3D.MatrixStack;
  * Created by Connor on 10/14/2015.
  */
 public interface IGLDrawable {
-    void draw(GLAutoDrawable glAutoDrawable, MatrixStack mv, Matrix3D p);
+//    void draw(GLAutoDrawable glAutoDrawable, MatrixStack mv, Matrix3D p);
     void init(GLAutoDrawable glAutoDrawable);
     void setupBuffers(GL4 gl, int[] vbo, int index);
     int getIndexesUsed();

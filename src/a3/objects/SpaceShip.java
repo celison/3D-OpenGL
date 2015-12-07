@@ -11,14 +11,13 @@ import graphicslib3D.MatrixStack;
  * Created by Connor on 11/11/2015.
  */
 public class SpaceShip extends InstancedObject {
+    private final String modelPath = "src/a3/shuttle.obj";
+    private final String texturePath = "src/a3/spaceRock.jpg";
     public SpaceShip() {
         super(27);
-        //float[] cp = {1.0f, 0.0f, 0.0f, 0.0f};
-        //clipPlane = cp;
-        myShape = new ImportedModel("src/a3/shuttle.obj");
-        //myShape = new Sphere(48);
+        myShape = new ImportedModel(modelPath);
         myMaterial = Material.SILVER;
-        setTextureURL("src/a3/spaceRock.jpg");
+        setTextureURL(texturePath);
         setTranslationRate(0,.0,0);
         setRotationRate(0,0,0);
         Matrix3D scale = new Matrix3D();

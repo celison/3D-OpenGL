@@ -1,9 +1,6 @@
 package a3;
 
-import a3.objects.Dome;
-import a3.objects.Earth;
-import a3.objects.SpaceShip;
-import a3.objects.WorldObject;
+import a3.objects.*;
 import a3.shapes.Sphere;
 import com.jogamp.opengl.*;
 import com.jogamp.opengl.awt.GLCanvas;
@@ -85,6 +82,9 @@ public class LightFrame extends JFrame implements GLEventListener, KeyListener, 
         worldObjectList.add(new SpaceShip());
         worldObjectList.add(new Dome());
         worldObjectList.add(new Earth());
+        for (int i = 0; i < 100; i++) {
+            worldObjectList.add(new Debris());
+        }
 
         FPSAnimator animator = new FPSAnimator(myCanvas, 30);
         animator.start();

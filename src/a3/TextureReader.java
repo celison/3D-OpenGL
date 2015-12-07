@@ -1,15 +1,16 @@
 package a3;
 
-import java.io.*;
-import java.nio.*;
-
-import com.jogamp.opengl.*;
+import com.jogamp.opengl.GL;
+import com.jogamp.opengl.GLAutoDrawable;
 
 import javax.imageio.ImageIO;
-import java.awt.image.*;
+import java.awt.*;
 import java.awt.color.ColorSpace;
 import java.awt.geom.AffineTransform;
-import java.awt.Graphics2D;
+import java.awt.image.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * Created by Connor on 10/21/2015.

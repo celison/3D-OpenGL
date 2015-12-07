@@ -1,5 +1,7 @@
 package a4;
 
+import a3.shapes.Sphere;
+import a4.objects.Ball;
 import a4.objects.WorldObject;
 import com.jogamp.opengl.*;
 import com.jogamp.opengl.awt.GLCanvas;
@@ -12,7 +14,27 @@ import java.awt.event.*;
 import java.nio.FloatBuffer;
 import java.util.Vector;
 
-import static com.jogamp.opengl.GL.*;
+import static com.jogamp.opengl.GL.GL_CLAMP_TO_EDGE;
+import static com.jogamp.opengl.GL.GL_CULL_FACE;
+import static com.jogamp.opengl.GL.GL_CW;
+import static com.jogamp.opengl.GL.GL_DEPTH_ATTACHMENT;
+import static com.jogamp.opengl.GL.GL_DEPTH_BUFFER_BIT;
+import static com.jogamp.opengl.GL.GL_DEPTH_COMPONENT32;
+import static com.jogamp.opengl.GL.GL_DEPTH_TEST;
+import static com.jogamp.opengl.GL.GL_FLOAT;
+import static com.jogamp.opengl.GL.GL_FRAMEBUFFER;
+import static com.jogamp.opengl.GL.GL_LEQUAL;
+import static com.jogamp.opengl.GL.GL_LINEAR;
+import static com.jogamp.opengl.GL.GL_LINES;
+import static com.jogamp.opengl.GL.GL_POLYGON_OFFSET_FILL;
+import static com.jogamp.opengl.GL.GL_TEXTURE_2D;
+import static com.jogamp.opengl.GL.GL_TEXTURE_MAG_FILTER;
+import static com.jogamp.opengl.GL.GL_TEXTURE_MIN_FILTER;
+import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_S;
+import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_T;
+import static com.jogamp.opengl.GL.GL_TRIANGLES;
+import static com.jogamp.opengl.GL.GL_VERSION;
+import static com.jogamp.opengl.GL2ES2.*;
 import static com.jogamp.opengl.GL2ES3.GL_COLOR;
 
 /**
@@ -23,10 +45,12 @@ public class ShadowFrame extends JFrame
     private GLCanvas myCanvas;
     private GLSLUtils util;
 
-    private int[] vao;
+    private int[] vao = new int[1];
     private int[] vbo;
 
-    private int renderingProgram;
+    private int renderingProgram1;
+    private int renderingProgram2;
+    private int lightPointRenderingProgram;
     private int axisRenderingProgram;
 
     private int startX, startY;
@@ -35,8 +59,9 @@ public class ShadowFrame extends JFrame
 
     private Matrix3D cameraTranslation;
     private Matrix3D cameraRotation;
+    private Matrix3D v_mat = new Matrix3D();
 
-    private Point3D plocation;
+    private Point3D plocation = new Point3D();
 
     private boolean showAxis = true;
     private boolean showPosLight = true;
@@ -45,11 +70,26 @@ public class ShadowFrame extends JFrame
     private MatrixStack mvStack;
     private float[] globalAmbient = new float[]{0.3f, 0.3f, 0.3f, 1.0f};
 
-    private static final String FRAG_SOURCE = "src/a3/frag.shader";
-    private static final String VERT_SOURCE = "src/a3/vert.shader";
+    //shadow stuff
+    private int scSizeX, scSizeY;
+    private int[] shadow_tex = new int[1];
+    private int[] shadow_buffer = new int[1];
+    private Matrix3D b = new Matrix3D();
+
+    private Sphere mySphere;
+
+
+    private static final String FIRST_FRAG_SOURCE = "src/a4/blinnFrag1.shader";
+    private static final String FIRST_VERT_SOURCE = "src/a4/blinnVert1.shader";
+
+    private static final String SECOND_FRAG_SOURCE = "src/a4/blinnFrag2.shader";
+    private static final String SECOND_VERT_SOURCE = "src/a4/blinnVert2.shader";
 
     private static final String AXIS_FRAG_SOURCE = "src/a4/fragAxis.shader";
     private static final String AXIS_VERT_SOURCE = "src/a4/vertAxis.shader";
+
+    private static final String LIGHT_FRAG_SOURCE = "src/a4/fragPoint.shader";
+    private static final String LIGHT_VERT_SOURCE = "src/a4/vertPoint.shader";
 
     private Vector<WorldObject> worldObjectList;
 
@@ -57,7 +97,7 @@ public class ShadowFrame extends JFrame
     public ShadowFrame() {
         super();
         setTitle("Elison - Program 4: Shadows");
-        setSize(1280, 980);
+        setSize(750, 750);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         util = new GLSLUtils();
@@ -77,18 +117,24 @@ public class ShadowFrame extends JFrame
         animator.start();
 
         setVisible(true);
+
+        worldObjectList.add(new Ball());
+        Ball b2 = new Ball();
+        b2.translate(0,0,5);
+
+        worldObjectList.add(b2);
     }
 
     private void togglePosLighting() {
         if (showPosLight) { // lights are on so turn them off
-            float[] amb = {0.0f,0.0f,0.0f,1.0f};
+            float[] amb = {0.0f, 0.0f, 0.0f, 1.0f};
             pl.setAmbient(amb);
             float[] diff = {0.0f, 0.0f, 0.0f, 1.0f};
             pl.setDiffuse(diff);
             float[] spec = {0.0f, 0.0f, 0.0f, 1.0f};
             pl.setSpecular(spec);
         } else { // lights are off so turn them on
-            float[] amb = {0.0f,0.0f,0.0f,1.0f};
+            float[] amb = {0.0f, 0.0f, 0.0f, 1.0f};
             pl.setAmbient(amb);
             float[] diff = {1.0f, 1.0f, 1.0f, 1.0f};
             pl.setDiffuse(diff);
@@ -184,6 +230,42 @@ public class ShadowFrame extends JFrame
 
     private void setupVerticies(GL4 gl) {
         int index = 0;
+        // get sphere vertex, texture, and normal values
+        mySphere = new Sphere(48);
+        Vertex3D[] vertices = mySphere.getVertices();
+        int[] indices = mySphere.getIndices();
+
+        float[] fvalues = new float[indices.length * 3];
+        float[] tvalues = new float[indices.length * 2];
+        float[] nvalues = new float[indices.length * 3];
+
+        for (int i = 0; i < indices.length; i++) {
+            fvalues[i * 3] = (float) (vertices[indices[i]]).getX();
+            fvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getY();
+            fvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getZ();
+            tvalues[i * 2] = (float) (vertices[indices[i]]).getS();
+            tvalues[i * 2 + 1] = (float) (vertices[indices[i]]).getT();
+            nvalues[i * 3] = (float) (vertices[indices[i]]).getNormalX();
+            nvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getNormalY();
+            nvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getNormalZ();
+        }
+
+        gl.glGenVertexArrays(vao.length, vao, 0);
+        gl.glBindVertexArray(vao[0]);
+
+        gl.glGenBuffers(vbo.length,  vbo, 0);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
+        FloatBuffer vertBuf = FloatBuffer.wrap(fvalues);
+        gl.glBufferData(GL.GL_ARRAY_BUFFER, vertBuf.limit() * 4, vertBuf, GL.GL_STATIC_DRAW);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
+        FloatBuffer texBuf = FloatBuffer.wrap(tvalues);
+        gl.glBufferData(GL.GL_ARRAY_BUFFER, texBuf.limit() * 4, texBuf, GL.GL_STATIC_DRAW);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
+        FloatBuffer norBuf = FloatBuffer.wrap(nvalues);
+        gl.glBufferData(GL.GL_ARRAY_BUFFER, norBuf.limit() * 4, norBuf, GL.GL_STATIC_DRAW);
 
         for (WorldObject worldObject : worldObjectList) {
             worldObject.setupBuffers(gl, vbo, index);
@@ -199,28 +281,47 @@ public class ShadowFrame extends JFrame
         Point3D lightPv = plocation.mult(v_matrix);
         float[] currLightPos = new float[]{(float) lightPv.getX(), (float) lightPv.getY(), (float) lightPv.getZ()};
 
-        int globalAmbLoc = gl.glGetUniformLocation(renderingProgram, "globalAmbient");
-        gl.glProgramUniform4fv(renderingProgram, globalAmbLoc, 1, globalAmbient, 0);
+        int globalAmbLoc = gl.glGetUniformLocation(renderingProgram2, "globalAmbient");
+        gl.glProgramUniform4fv(renderingProgram2, globalAmbLoc, 1, globalAmbient, 0);
 
         // get the locations of the light and material fields in the shader
-        int ambLoc = gl.glGetUniformLocation(renderingProgram, "light.ambient");
-        int diffLoc = gl.glGetUniformLocation(renderingProgram, "light.diffuse");
-        int specLoc = gl.glGetUniformLocation(renderingProgram, "light.specular");
-        int posLoc = gl.glGetUniformLocation(renderingProgram, "light.position");
-        int MambLoc = gl.glGetUniformLocation(renderingProgram, "material.ambient");
-        int MdiffLoc = gl.glGetUniformLocation(renderingProgram, "material.diffuse");
-        int MspecLoc = gl.glGetUniformLocation(renderingProgram, "material.specular");
-        int MshiLoc = gl.glGetUniformLocation(renderingProgram, "material.shininess");
+        int ambLoc = gl.glGetUniformLocation(renderingProgram2, "light.ambient");
+        int diffLoc = gl.glGetUniformLocation(renderingProgram2, "light.diffuse");
+        int specLoc = gl.glGetUniformLocation(renderingProgram2, "light.specular");
+        int posLoc = gl.glGetUniformLocation(renderingProgram2, "light.position");
+        int MambLoc = gl.glGetUniformLocation(renderingProgram2, "material.ambient");
+        int MdiffLoc = gl.glGetUniformLocation(renderingProgram2, "material.diffuse");
+        int MspecLoc = gl.glGetUniformLocation(renderingProgram2, "material.specular");
+        int MshiLoc = gl.glGetUniformLocation(renderingProgram2, "material.shininess");
 
         // set the uniform light and material values in the shader
-        gl.glProgramUniform4fv(renderingProgram, ambLoc, 1, pl.getAmbient(), 0);
-        gl.glProgramUniform4fv(renderingProgram, diffLoc, 1, pl.getDiffuse(), 0);
-        gl.glProgramUniform4fv(renderingProgram, specLoc, 1, pl.getSpecular(), 0);
-        gl.glProgramUniform3fv(renderingProgram, posLoc, 1, currLightPos, 0);
-        gl.glProgramUniform4fv(renderingProgram, MambLoc, 1, currentMaterial.getAmbient(), 0);
-        gl.glProgramUniform4fv(renderingProgram, MdiffLoc, 1, currentMaterial.getDiffuse(), 0);
-        gl.glProgramUniform4fv(renderingProgram, MspecLoc, 1, currentMaterial.getSpecular(), 0);
-        gl.glProgramUniform1f(renderingProgram, MshiLoc, currentMaterial.getShininess());
+        gl.glProgramUniform4fv(renderingProgram2, ambLoc, 1, pl.getAmbient(), 0);
+        gl.glProgramUniform4fv(renderingProgram2, diffLoc, 1, pl.getDiffuse(), 0);
+        gl.glProgramUniform4fv(renderingProgram2, specLoc, 1, pl.getSpecular(), 0);
+        gl.glProgramUniform3fv(renderingProgram2, posLoc, 1, currLightPos, 0);
+        gl.glProgramUniform4fv(renderingProgram2, MambLoc, 1, currentMaterial.getAmbient(), 0);
+        gl.glProgramUniform4fv(renderingProgram2, MdiffLoc, 1, currentMaterial.getDiffuse(), 0);
+        gl.glProgramUniform4fv(renderingProgram2, MspecLoc, 1, currentMaterial.getSpecular(), 0);
+        gl.glProgramUniform1f(renderingProgram2, MshiLoc, currentMaterial.getShininess());
+    }
+
+    public void setupShadowBuffers(GLAutoDrawable drawable) {
+        GL4 gl = (GL4) drawable.getGL();
+
+        scSizeX = myCanvas.getWidth();
+        scSizeY = myCanvas.getHeight();
+
+        gl.glGenFramebuffers(1, shadow_buffer, 0);
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
+
+        gl.glGenTextures(1, shadow_tex, 0);
+        gl.glBindTexture(GL_TEXTURE_2D, shadow_tex[0]);
+        gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32,
+                scSizeX, scSizeY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, null);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
 
     //Overloaded Methods
@@ -231,27 +332,30 @@ public class ShadowFrame extends JFrame
         System.out.println("JOGL VERSION: " + JoglVersion.getInstance().getImplementationVersion());
         System.out.println("OPEN GL VERSION: " + gl.glGetString(GL_VERSION));
 
-        vbo = new int[9 + 3 * worldObjectList.size()];
+        vbo = new int[3 + (3 * worldObjectList.size())];
 
         // create shader programs
+        renderingProgram1 = createShaderProgram(drawable, FIRST_VERT_SOURCE, FIRST_FRAG_SOURCE);
+        renderingProgram2 = createShaderProgram(drawable, SECOND_VERT_SOURCE, SECOND_FRAG_SOURCE);
+        axisRenderingProgram = createShaderProgram(drawable, AXIS_VERT_SOURCE, AXIS_FRAG_SOURCE);
+        lightPointRenderingProgram = createShaderProgram(drawable, LIGHT_VERT_SOURCE, LIGHT_FRAG_SOURCE);
+
+        IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM1, renderingProgram1);
+        IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM2, renderingProgram2);
 
         cameraTranslation = new Matrix3D();
         cameraRotation = new Matrix3D();
 
-        renderingProgram = createShaderProgram(drawable, VERT_SOURCE, FRAG_SOURCE);
-        axisRenderingProgram = createShaderProgram(drawable, AXIS_VERT_SOURCE, AXIS_FRAG_SOURCE);
-        //IdentityLocs.init(renderingProgram, gl);
         setupVerticies(gl);
-
+        setupShadowBuffers(drawable);
         // instantiate positional light and set location (using default amb, diff, spec settings)
-
         pl = new PositionalLight();
-        plocation = new Point3D(2, 2, 2);
+        plocation = new Point3D(0, 0, 0);
         pl.setPosition(plocation);
+
         mvStack = new MatrixStack(20);
 
         // init world objects
-
         for (WorldObject worldObject : worldObjectList) {
             worldObject.init(drawable);
         }
@@ -262,6 +366,10 @@ public class ShadowFrame extends JFrame
         float cameraY = -0.5f;
         float cameraZ = 8.0f;
         cameraTranslation.translate(cameraX, cameraY, -cameraZ);
+
+        // may reduce shadow border artifacts
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
     @Override
@@ -270,7 +378,8 @@ public class ShadowFrame extends JFrame
     }
 
     @Override
-    public void display(GLAutoDrawable drawable) {GL4 gl = (GL4) drawable.getGL();
+    public void display(GLAutoDrawable drawable) {
+        GL4 gl = (GL4) drawable.getGL();
 
         //Clean Background
         gl.glClear(GL_DEPTH_BUFFER_BIT);
@@ -304,41 +413,98 @@ public class ShadowFrame extends JFrame
 
         // Draw Light Source
 
-//        if (showPosLight) {
-//            gl.glUseProgram(lightPointRenderingProgram);
-//            mvLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "mv_matrix");
-//            projLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "proj_matrix");
-//
-//            pl.setPosition(plocation);
-//
-//            // draw small cube to represent positional lighting
-//
-//            mvStack.pushMatrix();
-//
-//            mvStack.translate(plocation.getX(), plocation.getY(), plocation.getZ());
-//            mvStack.scale(.1, .1, .1);
-//
-//            gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
-//            gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
-//
-//            gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[0]);
-//            gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
-//            gl.glEnableVertexAttribArray(0);
-//
-//            gl.glEnable(GL_CULL_FACE);
-//            gl.glFrontFace(GL_CW);
-//            gl.glEnable(GL_DEPTH_TEST);
-//            gl.glDepthFunc(GL_LEQUAL);
-//
-//            gl.glDrawArrays(GL_TRIANGLES, 0, 36);
-//            mvStack.popMatrix();
-//        }
+        if (showPosLight) {
+            gl.glUseProgram(lightPointRenderingProgram);
+            mvLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "mv_matrix");
+            projLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "proj_matrix");
+
+            pl.setPosition(plocation);
+
+            // draw small cube to represent positional lighting
+
+            mvStack.pushMatrix();
+
+            mvStack.translate(plocation.getX(), plocation.getY(), plocation.getZ());
+            mvStack.scale(.1, .1, .1);
+
+            gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
+            gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
+
+            gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[0]);
+            gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+            gl.glEnableVertexAttribArray(0);
+
+            gl.glEnable(GL_CULL_FACE);
+            gl.glFrontFace(GL_CCW);
+            gl.glEnable(GL_DEPTH_TEST);
+            gl.glDepthFunc(GL_LEQUAL);
+
+            gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getIndices().length);
+            mvStack.popMatrix();
+        }
+
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
+        gl.glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex[0], 0);
+
+        gl.glDrawBuffer(GL.GL_NONE);
+        gl.glEnable(GL_DEPTH_TEST);
+
+        gl.glEnable(GL_POLYGON_OFFSET_FILL);    // for reducing
+        gl.glPolygonOffset(2.0f, 4.0f);            //  shadow artifacts
+
+        Point3D origin = new Point3D(0.0, 0.0, 0.0);
+        Vector3D up = new Vector3D(0.0, 1.0, 0.0);
+
+        Matrix3D lightV_matrix = lookAt(pl.getPosition(), origin, up);
+
+        for (WorldObject worldObject : worldObjectList) {
+            worldObject.firstPass(drawable, lightV_matrix, pMat);
+        }
+
+        gl.glDisable(GL_POLYGON_OFFSET_FILL);    // artifact reduction, continued
+
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.glActiveTexture(gl.GL_TEXTURE0);
+        gl.glBindTexture(GL_TEXTURE_2D, shadow_tex[0]);
+        gl.glDrawBuffer(GL.GL_FRONT);
+
+        v_mat.setToIdentity();
+        v_mat.concatenate(cameraTranslation);
+        v_mat.concatenate(cameraRotation);
+
 
         for (WorldObject worldObject : worldObjectList) {
             currentMaterial = worldObject.getMaterial();
             installLights(mvStack.peek(), drawable);
-            worldObject.draw(drawable, mvStack, pMat);
+            worldObject.secondPass(drawable, v_mat, pMat,b, lightV_matrix);
         }
+    }
+
+    private Matrix3D lookAt(graphicslib3D.Point3D eyeP, graphicslib3D.Point3D centerP, Vector3D upV) {
+        Vector3D eyeV = new Vector3D(eyeP);
+        Vector3D cenV = new Vector3D(centerP);
+        Vector3D f = (cenV.minus(eyeV)).normalize();
+        Vector3D sV = (f.cross(upV)).normalize();
+        Vector3D nU = (sV.cross(f)).normalize();
+
+        Matrix3D l = new Matrix3D();
+        l.setElementAt(0, 0, sV.getX());
+        l.setElementAt(0, 1, nU.getX());
+        l.setElementAt(0, 2, -f.getX());
+        l.setElementAt(0, 3, 0.0f);
+        l.setElementAt(1, 0, sV.getY());
+        l.setElementAt(1, 1, nU.getY());
+        l.setElementAt(1, 2, -f.getY());
+        l.setElementAt(1, 3, 0.0f);
+        l.setElementAt(2, 0, sV.getZ());
+        l.setElementAt(2, 1, nU.getZ());
+        l.setElementAt(2, 2, -f.getZ());
+        l.setElementAt(2, 3, 0.0f);
+        l.setElementAt(3, 0, sV.dot(eyeV.mult(-1)));
+        l.setElementAt(3, 1, nU.dot(eyeV.mult(-1)));
+        l.setElementAt(3, 2, (f.mult(-1)).dot(eyeV.mult(-1)));
+        l.setElementAt(3, 3, 1.0f);
+        return (l.transpose());
     }
 
     @Override

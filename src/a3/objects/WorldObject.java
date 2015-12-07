@@ -1,6 +1,6 @@
 package a3.objects;
 
-import a2.TextureReader;
+import a3.TextureReader;
 import a3.IdentityLocs;
 import a3.shapes.IShape;
 import com.jogamp.opengl.GL;
