@@ -2,9 +2,11 @@
 
 layout (location=0) in vec3 vertPos;
 layout (location=1) in vec3 vertNormal;
+layout (location=2) in vec3 vertTangent;
+layout (location=3) in vec2 texCord;
 
-
-out vec3 vNormal, vLightDir, vVertPos, vHalfVec; 
+out vec2 tc;
+out vec3 vNormal, vLightDir, vVertPos, vHalfVec, vTangent;
 out vec4 shadow_coord;
 
 struct PositionalLight
@@ -24,6 +26,8 @@ uniform mat4 proj_matrix;
 uniform mat4 normalMat;
 uniform mat4 shadowMVP;
 layout (binding=0) uniform sampler2DShadow shadowTex;
+layout (binding=1) uniform sampler2D tex_normal;
+layout (binding=2) uniform sampler2D tex_texture;
 
 void main(void)
 {	//output the vertex position to the rasterizer for interpolation
@@ -39,6 +43,10 @@ void main(void)
 	vHalfVec = (vLightDir-vVertPos).xyz;
 	
 	shadow_coord = shadowMVP * vec4(vertPos,1.0);
-	
+
+	vTangent = vertTangent;
+
+	tc = texCord;
+
 	gl_Position = proj_matrix * mv_matrix * vec4(vertPos,1.0);
 }

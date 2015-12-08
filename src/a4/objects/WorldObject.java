@@ -23,11 +23,11 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
     protected int index;
     protected int dxRotate, dyRotate, dzRotate;
     protected double dxTranslate, dyTranslate, dzTranslate;
-    protected int mv_location,proj_location, n_location;
+    protected int mv_location, proj_location, n_location;
     private TextureReader tr = new TextureReader();
-    protected int texture;
+    protected int texture, normal;
     protected Matrix3D shadowMVP1, shadowMVP2, m_matrix, mv_matrix;
-    protected String textureURL;
+    protected String textureURL, normalURL;
 
     protected Vector<IGLDrawable> orbitList;
 
@@ -67,6 +67,7 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         m_matrix = new Matrix3D();
         mv_matrix = new Matrix3D();
         texture = tr.loadTexture(drawable, textureURL);
+        normal = tr.loadTexture(drawable, normalURL);
     }
 
 //    @Override
@@ -124,6 +125,7 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         float[] fvalues = new float[indices.length * 3];
         float[] tvalues = new float[indices.length * 2];
         float[] nvalues = new float[indices.length * 3];
+        float[] tanvalues = new float[indices.length * 3];
 
         for (int i = 0; i < indices.length; i++) {
             fvalues[i * 3] = (float) (vertices[indices[i]]).getX();
@@ -134,6 +136,9 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
             nvalues[i * 3] = (float) (vertices[indices[i]]).getNormalX();
             nvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getNormalY();
             nvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getNormalZ();
+            tanvalues[i * 3] = (float) (vertices[indices[i]]).getTangent().getX();
+            tanvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getTangent().getY();
+            tanvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getTangent().getZ();
         }
 
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
@@ -147,14 +152,19 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
         FloatBuffer norBuf = FloatBuffer.wrap(nvalues);
         gl.glBufferData(GL.GL_ARRAY_BUFFER, norBuf.limit() * 4, norBuf, GL.GL_STATIC_DRAW);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
+        FloatBuffer tanBuf = FloatBuffer.wrap(tanvalues);
+        gl.glBufferData(GL.GL_ARRAY_BUFFER, tanBuf.limit() * 4, tanBuf, GL.GL_STATIC_DRAW);
+
     }
 
     public Material getMaterial() {
         return myMaterial;
     }
 
-    public void firstPass(GLAutoDrawable drawable, Matrix3D lightV_matrix, Matrix3D lightP_matrix)
-    {	GL4 gl = (GL4) drawable.getGL();
+    public void firstPass(GLAutoDrawable drawable, Matrix3D lightV_matrix, Matrix3D lightP_matrix) {
+        GL4 gl = (GL4) drawable.getGL();
 
         gl.glUseProgram(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM1));
 
@@ -185,17 +195,19 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
     }
 
-    public void secondPass(GLAutoDrawable drawable, Matrix3D v_matrix, Matrix3D proj_mat, Matrix3D b, Matrix3D lightV_matrix)
-    {	GL4 gl = (GL4) drawable.getGL();
+    public void secondPass(GLAutoDrawable drawable, Matrix3D v_matrix, Matrix3D proj_mat, Matrix3D b, Matrix3D lightV_matrix) {
+        GL4 gl = (GL4) drawable.getGL();
 
         gl.glUseProgram(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2));
+
+        rotate(dxRotate, dyRotate, dzRotate);
 
         // draw the torus
 
         mv_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "mv_matrix");
         proj_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "proj_matrix");
         n_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "normalMat");
-        int shadow_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2),  "shadowMVP");
+        int shadow_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "shadowMVP");
 
         //  build the MODEL matrix
         m_matrix.setToIdentity();
@@ -225,10 +237,26 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
         gl.glEnableVertexAttribArray(0);
 
+        // set up texture buffer
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 1]);
+        gl.glVertexAttribPointer(3, 2, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(3);
+
         // set up normals buffer
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 2]);
         gl.glVertexAttribPointer(1, 3, GL.GL_FLOAT, false, 0, 0);
         gl.glEnableVertexAttribArray(1);
+
+        // set up tangent buffer
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index + 3]);
+        gl.glVertexAttribPointer(2, 3, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(2);
+
+        gl.glActiveTexture(gl.GL_TEXTURE1);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, normal);
+
+        gl.glActiveTexture(gl.GL_TEXTURE2);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture);
 
         gl.glEnable(GL_CULL_FACE);
         gl.glFrontFace(GL_CCW);

@@ -77,6 +77,9 @@ public class ShadowFrame extends JFrame
     private Matrix3D b = new Matrix3D();
 
     private Sphere mySphere;
+    private TextureReader tr;
+
+    private int normal_texture;
 
 
     private static final String FIRST_FRAG_SOURCE = "src/a4/blinnFrag1.shader";
@@ -84,7 +87,8 @@ public class ShadowFrame extends JFrame
 
     private static final String SECOND_FRAG_SOURCE = "src/a4/blinnFrag2.shader";
     private static final String SECOND_VERT_SOURCE = "src/a4/blinnVert2.shader";
-
+    private static final String TES_SOURCE = "src/a4/tessE.shader";
+    private static final String TCS_SOURCE = "src/a4/tessC.shader";
     private static final String AXIS_FRAG_SOURCE = "src/a4/fragAxis.shader";
     private static final String AXIS_VERT_SOURCE = "src/a4/vertAxis.shader";
 
@@ -112,13 +116,12 @@ public class ShadowFrame extends JFrame
         myCanvas.addMouseWheelListener(this);
 
         worldObjectList = new Vector<>();
-        for (int i = 0; i < 27; i++) {
+        for (int i = 0; i < 5; i++) {
             Ball ball = new Ball();
             int x = i % 3;
             int y = (i / 3) % 3;
             int z = (i / 9) % 3;
-            System.out.println(i + ": " + x + ", " + y + ", " + z);
-            ball.translate(x, y, z);
+            ball.translate(x - 0.5, y, z);
             worldObjectList.add(ball);
         }
 
@@ -168,20 +171,32 @@ public class ShadowFrame extends JFrame
     }
 
     private int createShaderProgram(GLAutoDrawable drawable, String vertSource, String fragSource) {
+        return createShaderProgram(drawable, vertSource, null, null, fragSource);
+    }
+
+    private int createShaderProgram(GLAutoDrawable drawable, String vertSource, String tcsSource, String tesSource, String fragSource) {
         GL4 gl = (GL4) drawable.getGL();
         int[] vertCompiled = new int[1];
         int[] fragCompiled = new int[1];
         int[] linked = new int[1];
+        boolean doTessellation = tcsSource != null && tesSource != null;
 
-        System.out.println("Reading " + vertSource + " and " + fragSource);
+        System.out.print("Reading " + vertSource + " and " + fragSource);
+        if (doTessellation) System.out.print(" and " + tcsSource + " and " + tesSource  );
+        System.out.print("\n");
 
         String vshaderSource[] = util.readShaderSource(vertSource);
         String fshaderSource[] = util.readShaderSource(fragSource);
+        String[] tcshaderSource;
+        String[] teshaderSource;
         int lengths[];
 
 
         int vShader = gl.glCreateShader(GL4.GL_VERTEX_SHADER);
+        int tessCShader = gl.glCreateShader(GL4.GL_TESS_CONTROL_SHADER);
+        int tessEShader = gl.glCreateShader(GL4.GL_TESS_EVALUATION_SHADER);
         int fShader = gl.glCreateShader(GL4.GL_FRAGMENT_SHADER);
+
 
         lengths = new int[vshaderSource.length];
         for (int i = 0; i < lengths.length; i++) {
@@ -210,25 +225,65 @@ public class ShadowFrame extends JFrame
         else
             System.out.println("Fragment compilation failed.");
 
+        if (doTessellation) {
+            int[] tescCompiled = new int[1];
+            int[] teseCompiled = new int[1];
+
+            tcshaderSource = util.readShaderSource(tcsSource);
+            teshaderSource = util.readShaderSource(tesSource);
+
+            lengths = new int[tcshaderSource.length];
+            for (int i = 0; i < lengths.length; i++) {
+                lengths[i] = tcshaderSource[i].length();
+            }
+            gl.glShaderSource(tessCShader,
+                    tcshaderSource.length, tcshaderSource, lengths, 0);
+
+            lengths = new int[teshaderSource.length];
+            for (int i = 0; i < lengths.length; i++) {
+                lengths[i] = teshaderSource[i].length();
+            }
+            gl.glShaderSource(tessEShader,
+                    teshaderSource.length, teshaderSource, lengths, 0);
+
+            gl.glCompileShader(tessCShader);
+            gl.glGetShaderiv(tessCShader, GL4.GL_COMPILE_STATUS, tescCompiled, 0);
+            if (tescCompiled[0] == 1)
+                System.out.println("Tessellation control shader compilation success.");
+            else
+                System.out.println("Tessellation control shader compilation failed.");
+
+            gl.glCompileShader(tessEShader);
+            gl.glGetShaderiv(tessEShader, GL4.GL_COMPILE_STATUS, teseCompiled, 0);
+            if (teseCompiled[0] == 1)
+                System.out.println("Tessellation evaluation shader compilation success.");
+            else
+                System.out.println("Tessellation evaluation shader compilation failed.");
+        }
+
         if ((vertCompiled[0] != 1) || (fragCompiled[0] != 1)) {
             System.out.println("Compilation error; return flags:");
             System.out.println("vertCompiled = " + vertCompiled[0] + " ; fragCompiled = " + fragCompiled[0]);
         } else
             System.out.println("Successful compilation.");
 
-        int vfprogram = gl.glCreateProgram();
-        gl.glAttachShader(vfprogram, vShader);
-        gl.glAttachShader(vfprogram, fShader);
-        gl.glLinkProgram(vfprogram);
+        int rendering_program = gl.glCreateProgram();
+        gl.glAttachShader(rendering_program, vShader);
+        gl.glAttachShader(rendering_program, fShader);
+        if (doTessellation) {
+            gl.glAttachShader(rendering_program, tessCShader);
+            gl.glAttachShader(rendering_program, tessEShader);
+        }
+        gl.glLinkProgram(rendering_program);
         util.printOpenGLError(drawable);
-        gl.glGetProgramiv(vfprogram, GL4.GL_LINK_STATUS, linked, 0);
+        gl.glGetProgramiv(rendering_program, GL4.GL_LINK_STATUS, linked, 0);
         if (linked[0] == 1)
             System.out.println("Linking success.");
         else {
             System.out.println("Linking failed.");
-            util.printProgramInfoLog(drawable, vfprogram);
+            util.printProgramInfoLog(drawable, rendering_program);
         }
-        return vfprogram;
+        return rendering_program;
     }
 
     private void setupVerticies(GL4 gl) {
@@ -272,7 +327,7 @@ public class ShadowFrame extends JFrame
 
         for (WorldObject worldObject : worldObjectList) {
             worldObject.setupBuffers(gl, vbo, index);
-            index += 3;
+            index += 4;
         }
 
     }
@@ -336,7 +391,7 @@ public class ShadowFrame extends JFrame
         System.out.println("JOGL VERSION: " + JoglVersion.getInstance().getImplementationVersion());
         System.out.println("OPEN GL VERSION: " + gl.glGetString(GL_VERSION));
 
-        vbo = new int[3 + (3 * worldObjectList.size())];
+        vbo = new int[3 + (4 * worldObjectList.size())];
 
         // create shader programs
         renderingProgram1 = createShaderProgram(drawable, FIRST_VERT_SOURCE, FIRST_FRAG_SOURCE);

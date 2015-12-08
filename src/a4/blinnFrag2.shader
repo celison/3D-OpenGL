@@ -1,7 +1,9 @@
 #version 430
 
-in vec3 vNormal, vLightDir, vVertPos, vHalfVec;
+in vec2 tc;
+in vec3 vNormal, vLightDir, vVertPos, vHalfVec, vTangent;
 in vec4 shadow_coord;
+
 out vec4 fragColor;
  
 struct PositionalLight
@@ -21,14 +23,35 @@ uniform mat4 mv_matrix;
 uniform mat4 proj_matrix;
 uniform mat4 normalMat;
 uniform mat4 shadowMVP;
+
 layout (binding=0) uniform sampler2DShadow shadowTex;
+layout (binding=1) uniform sampler2D tex_normal;
+layout (binding=2) uniform sampler2D tex_texture;
+
+vec3 CalcBumpedNormal();
+
+vec3 CalcBumpedNormal()
+{
+	vec3 normal = normalize(vNormal);
+	vec3 tan = normalize(vTangent);
+	tan = normalize(tan - dot(tan, normal) * normal);
+	vec3 bitangent = cross(tan, normal);
+	vec3 bumpNormal = texture2D(tex_normal,tc).xyz;
+	bumpNormal = bumpNormal * 2.0 - 1.0;
+	mat3 TBN = mat3(tan, bitangent, normal);
+	vec3 newNormal = TBN * bumpNormal;
+	newNormal = normalize(newNormal);
+	return newNormal;
+}
 
 void main(void)
 {	vec3 L = normalize(vLightDir);
-	vec3 N = normalize(vNormal);
+	vec3 N = CalcBumpedNormal();
 	vec3 V = normalize(-vVertPos);
 	vec3 H = normalize(vHalfVec);
-	
+
+	vec4 texColor = texture2D(tex_texture,tc);
+
 	float inShadow = textureProj(shadowTex, shadow_coord);
 	
 	fragColor = globalAmbient * material.ambient
@@ -39,4 +62,6 @@ void main(void)
 				+ light.specular * material.specular
 				* pow(max(dot(H,N),0.0),material.shininess*3.0);
 	}
+
+	fragColor = fragColor * 0.5 + texColor * 0.5;
 }

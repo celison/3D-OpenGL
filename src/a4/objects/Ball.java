@@ -20,6 +20,7 @@ public class Ball extends WorldObject {
                 new float[]{0.0F, 0.0F, 0.0F, 1.0F}, // emission
                 12.8F); // shininess
         setTextureURL(texturePath);
+        normalURL = "src/a4/normal.jpg";
         setRotationRate(0, 1, 0);
         Matrix3D scale = new Matrix3D();
         scale.scale(.25, .25, .25);
