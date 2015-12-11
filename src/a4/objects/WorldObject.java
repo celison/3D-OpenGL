@@ -47,9 +47,6 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
     public int getIndexesUsed() {
         int rv = 0;
-        for (IGLDrawable o : orbitList) {
-            rv += o.getIndexesUsed();
-        }
         rv += 3;
         return rv;
     }
@@ -58,6 +55,10 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         dxTranslate = dx;
         dyTranslate = dy;
         dzTranslate = dz;
+    }
+
+    public IShape getShape() {
+        return myShape;
     }
 
     @Override
@@ -162,6 +163,8 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
     public Material getMaterial() {
         return myMaterial;
     }
+
+    public void setMaterial(Material m) { myMaterial = m;}
 
     public void firstPass(GLAutoDrawable drawable, Matrix3D lightV_matrix, Matrix3D lightP_matrix) {
         GL4 gl = (GL4) drawable.getGL();

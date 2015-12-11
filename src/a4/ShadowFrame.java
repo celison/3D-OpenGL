@@ -10,31 +10,15 @@ import graphicslib3D.*;
 import graphicslib3D.light.PositionalLight;
 
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.*;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.Random;
 import java.util.Vector;
 
-import static com.jogamp.opengl.GL.GL_CLAMP_TO_EDGE;
-import static com.jogamp.opengl.GL.GL_CULL_FACE;
-import static com.jogamp.opengl.GL.GL_CW;
-import static com.jogamp.opengl.GL.GL_DEPTH_ATTACHMENT;
-import static com.jogamp.opengl.GL.GL_DEPTH_BUFFER_BIT;
-import static com.jogamp.opengl.GL.GL_DEPTH_COMPONENT32;
-import static com.jogamp.opengl.GL.GL_DEPTH_TEST;
-import static com.jogamp.opengl.GL.GL_FLOAT;
-import static com.jogamp.opengl.GL.GL_FRAMEBUFFER;
-import static com.jogamp.opengl.GL.GL_LEQUAL;
-import static com.jogamp.opengl.GL.GL_LINEAR;
-import static com.jogamp.opengl.GL.GL_LINES;
-import static com.jogamp.opengl.GL.GL_POLYGON_OFFSET_FILL;
-import static com.jogamp.opengl.GL.GL_TEXTURE_2D;
-import static com.jogamp.opengl.GL.GL_TEXTURE_MAG_FILTER;
-import static com.jogamp.opengl.GL.GL_TEXTURE_MIN_FILTER;
-import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_S;
-import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_T;
-import static com.jogamp.opengl.GL.GL_TRIANGLES;
-import static com.jogamp.opengl.GL.GL_VERSION;
-import static com.jogamp.opengl.GL2ES2.*;
+import static com.jogamp.opengl.GL.*;
+import static com.jogamp.opengl.GL4.*;
 import static com.jogamp.opengl.GL2ES3.GL_COLOR;
 
 /**
@@ -52,6 +36,7 @@ public class ShadowFrame extends JFrame
     private int renderingProgram2;
     private int lightPointRenderingProgram;
     private int axisRenderingProgram;
+    private int skydomeRenderingProgram;
 
     private int startX, startY;
 
@@ -68,6 +53,7 @@ public class ShadowFrame extends JFrame
 
     private Material currentMaterial;
     private MatrixStack mvStack;
+    private Matrix3D pMat;
     private float[] globalAmbient = new float[]{0.3f, 0.3f, 0.3f, 1.0f};
 
     //shadow stuff
@@ -76,10 +62,15 @@ public class ShadowFrame extends JFrame
     private int[] shadow_buffer = new int[1];
     private Matrix3D b = new Matrix3D();
 
-    private Sphere mySphere;
+    private Ball mySphere;
     private TextureReader tr;
 
-    private int normal_texture;
+    private int noiseHeight= 200;
+    private int noiseWidth = 200;
+    private int noiseDepth = 200;
+    private double[][][] noise = new double[noiseHeight][noiseWidth][noiseDepth];
+    private Random random = new Random();
+    private int cloudTextureID;
 
 
     private static final String FIRST_FRAG_SOURCE = "src/a4/blinnFrag1.shader";
@@ -87,15 +78,21 @@ public class ShadowFrame extends JFrame
 
     private static final String SECOND_FRAG_SOURCE = "src/a4/blinnFrag2.shader";
     private static final String SECOND_VERT_SOURCE = "src/a4/blinnVert2.shader";
+
     private static final String TES_SOURCE = "src/a4/tessE.shader";
     private static final String TCS_SOURCE = "src/a4/tessC.shader";
+
     private static final String AXIS_FRAG_SOURCE = "src/a4/fragAxis.shader";
     private static final String AXIS_VERT_SOURCE = "src/a4/vertAxis.shader";
 
     private static final String LIGHT_FRAG_SOURCE = "src/a4/fragPoint.shader";
     private static final String LIGHT_VERT_SOURCE = "src/a4/vertPoint.shader";
 
+    private static final String SKYDOME_FRAG_SOURCE = "src/a4/skyboxFrag.shader";
+    private static final String SKYDOME_VERT_SOURCE = "src/a4/skyboxVert.shader";
+
     private Vector<WorldObject> worldObjectList;
+    private float cloudFrame = 0.0f;
 
     // Constructor
     public ShadowFrame() {
@@ -119,8 +116,8 @@ public class ShadowFrame extends JFrame
         for (int i = 0; i < 5; i++) {
             Ball ball = new Ball();
             int x = i % 3;
-            int y = (i / 3) % 3;
-            int z = (i / 9) % 3;
+            int z = (i / 3) % 3;
+            int y = (i / 9) % 3;
             ball.translate(x - 0.5, y, z);
             worldObjectList.add(ball);
         }
@@ -289,9 +286,10 @@ public class ShadowFrame extends JFrame
     private void setupVerticies(GL4 gl) {
         int index = 0;
         // get sphere vertex, texture, and normal values
-        mySphere = new Sphere(48);
-        Vertex3D[] vertices = mySphere.getVertices();
-        int[] indices = mySphere.getIndices();
+        mySphere = new Ball();
+
+        Vertex3D[] vertices = mySphere.getShape().getVertices();
+        int[] indices = mySphere.getShape().getIndices();
 
         float[] fvalues = new float[indices.length * 3];
         float[] tvalues = new float[indices.length * 2];
@@ -383,6 +381,97 @@ public class ShadowFrame extends JFrame
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
 
+    private void fillDataArray(byte data[])
+    { for (int i=0; i<noiseHeight; i++)
+    { for (int j=0; j<noiseWidth; j++)
+    { for (int k=0; k<noiseDepth; k++)
+    { // clouds (same as above with blue hue)
+        float hue = 240/360.0f;
+        float sat = (float) turbulence(i,j,k,32) / 256.0f;
+        float bri = 100/100.0f;
+        int rgb = Color.HSBtoRGB(hue, sat, bri);
+        Color c = new Color(rgb);
+        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+0] = (byte) c.getRed();
+        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+1] = (byte) c.getGreen();
+        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+2] = (byte) c.getBlue();
+        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+3] = (byte) 0;
+    } } } }
+
+    private int loadNoiseTexture(GLAutoDrawable drawable)
+    {	GL4 gl = (GL4) drawable.getGL();
+
+
+        byte[] data = new byte[noiseHeight*noiseWidth*noiseDepth*4];
+
+        ByteBuffer bb = ByteBuffer.allocate(noiseHeight*noiseWidth*noiseDepth*4);
+
+        fillDataArray(data);
+
+        bb = ByteBuffer.wrap(data);
+
+        int[] textureIDs = new int[1];
+        gl.glGenTextures(1, textureIDs, 0);
+        int textureID = textureIDs[0];
+
+        gl.glBindTexture(gl.GL_TEXTURE_3D, textureID);
+
+        gl.glTexStorage3D(gl.GL_TEXTURE_3D, 1, GL_RGBA8, noiseWidth, noiseHeight, noiseDepth);
+        gl.glTexSubImage3D(gl.GL_TEXTURE_3D, 0, 0, 0, 0,
+                noiseWidth, noiseHeight, noiseDepth, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, bb);
+
+        gl.glTexParameteri(gl.GL_TEXTURE_3D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR);
+        return textureID;
+    }
+
+    void generateNoise()
+    {	for (int x=0; x<noiseHeight; x++)
+    {	for (int y=0; y<noiseWidth; y++)
+    {	for (int z=0; z<noiseDepth; z++)
+    {	noise[x][y][z] = random.nextDouble();
+    }	}	}	}
+
+    double smoothNoise(double x1, double y1, double z1)
+    {	//get fractional part of x, y, and z
+        double fractX = x1 - (int) x1;
+        double fractY = y1 - (int) y1;
+        double fractZ = z1 - (int) z1;
+
+        //neighbor values
+        int x2 = ((int)x1 + noiseWidth - 1) % noiseWidth;
+        int y2 = ((int)y1 + noiseHeight- 1) % noiseHeight;
+        int z2 = ((int)z1 + noiseDepth - 1) % noiseDepth;
+
+        //smooth the noise by interpolating
+        double value = 0.0;
+        value += fractX     * fractY     * fractZ     * noise[(int)x1][(int)y1][(int)z1];
+        value += fractX     * (1-fractY) * fractZ     * noise[(int)x1][(int)y2][(int)z1];
+        value += (1-fractX) * fractY     * fractZ     * noise[(int)x2][(int)y1][(int)z1];
+        value += (1-fractX) * (1-fractY) * fractZ     * noise[(int)x2][(int)y2][(int)z1];
+
+        value += fractX     * fractY     * (1-fractZ) * noise[(int)x1][(int)y1][(int)z2];
+        value += fractX     * (1-fractY) * (1-fractZ) * noise[(int)x1][(int)y2][(int)z2];
+        value += (1-fractX) * fractY     * (1-fractZ) * noise[(int)x2][(int)y1][(int)z2];
+        value += (1-fractX) * (1-fractY) * (1-fractZ) * noise[(int)x2][(int)y2][(int)z2];
+
+        return value;
+    }
+
+    private double turbulence(double x, double y, double z, double size)
+    {	double value = 0.0, initialSize = size;
+        while(size >= 0.9)
+        {	value = value + smoothNoise(x/size, y/size, z/size) * size;
+            size = size / 2.0;
+        }
+        value = value/initialSize;
+        value = 256.0 * logistic(value * 128.0 - 120.0);
+        return value;
+    }
+
+    private double logistic(double x)
+    {	double k = 0.2;
+        return (1.0/(1.0+Math.pow(2.718,-k*x)));
+    }
+
     //Overloaded Methods
 
     @Override
@@ -398,6 +487,7 @@ public class ShadowFrame extends JFrame
         renderingProgram2 = createShaderProgram(drawable, SECOND_VERT_SOURCE, SECOND_FRAG_SOURCE);
         axisRenderingProgram = createShaderProgram(drawable, AXIS_VERT_SOURCE, AXIS_FRAG_SOURCE);
         lightPointRenderingProgram = createShaderProgram(drawable, LIGHT_VERT_SOURCE, LIGHT_FRAG_SOURCE);
+        skydomeRenderingProgram = createShaderProgram(drawable, SKYDOME_VERT_SOURCE, SKYDOME_FRAG_SOURCE);
 
         IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM1, renderingProgram1);
         IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM2, renderingProgram2);
@@ -411,6 +501,8 @@ public class ShadowFrame extends JFrame
         pl = new PositionalLight();
         plocation = new Point3D(0, 0, 5);
         pl.setPosition(plocation);
+
+        cloudTextureID = loadNoiseTexture(drawable);
 
         mvStack = new MatrixStack(20);
 
@@ -464,16 +556,21 @@ public class ShadowFrame extends JFrame
 
         // setup projection Matrix
         float aspect = myCanvas.getWidth() / myCanvas.getHeight();
-        Matrix3D pMat = perspective(50.0f, aspect, 0.1f, 1000.0f);
+        pMat = perspective(50.0f, aspect, 0.1f, 1000.0f);
 
         MatrixStack mvStack = new MatrixStack(20);
         // setup view matrix
         mvStack.pushMatrix();
         mvStack.multMatrix(cameraRotation);
-        mvStack.multMatrix(cameraTranslation);
 
         int mvLoc;
         int projLoc;
+
+        // Skydome
+
+        drawSkydome(drawable);
+
+        mvStack.multMatrix(cameraTranslation);
 
         if (showAxis) {
             gl.glUseProgram(axisRenderingProgram);
@@ -483,9 +580,10 @@ public class ShadowFrame extends JFrame
             gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
             gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
 
+            gl.glClear(GL_DEPTH_BUFFER_BIT);
+
             gl.glDrawArrays(GL_LINES, 0, 6);
         }
-
 
         // Draw Light Source
 
@@ -545,9 +643,42 @@ public class ShadowFrame extends JFrame
             gl.glEnable(GL_DEPTH_TEST);
             gl.glDepthFunc(GL_LEQUAL);
 
-            gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getIndices().length);
+            gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getShape().getIndices().length);
             mvStack.popMatrix();
         }
+    }
+
+    private void drawSkydome(GLAutoDrawable drawable) {
+        GL4 gl = (GL4) drawable.getGL();
+        gl.glUseProgram(skydomeRenderingProgram);
+
+        int mvLoc = gl.glGetUniformLocation(skydomeRenderingProgram, "mv_matrix");
+        int projLoc = gl.glGetUniformLocation(skydomeRenderingProgram, "proj_matrix");
+        int frame = gl.glGetUniformLocation(skydomeRenderingProgram, "d");
+
+        cloudFrame = cloudFrame + 0.000025f; if (cloudFrame>=1.0f) cloudFrame=0.0f;
+        gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
+        gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
+        gl.glUniform1f(frame, cloudFrame );
+
+        gl.glActiveTexture(GL.GL_TEXTURE0);
+        gl.glBindTexture(gl.GL_TEXTURE_3D, cloudTextureID);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[0]);
+        gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(0);
+
+        gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[1]);
+        gl.glVertexAttribPointer(1, 2, GL.GL_FLOAT, false, 0, 0);
+        gl.glEnableVertexAttribArray(1);
+
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        gl.glFrontFace(GL_CW);
+        gl.glEnable(GL_DEPTH_TEST);
+        gl.glDepthFunc(GL_LEQUAL);
+
+        gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getShape().getIndices().length);
+
     }
 
     private Matrix3D lookAt(graphicslib3D.Point3D eyeP, graphicslib3D.Point3D centerP, Vector3D upV) {
