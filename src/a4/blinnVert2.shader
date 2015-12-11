@@ -25,6 +25,8 @@ uniform mat4 mv_matrix;
 uniform mat4 proj_matrix;
 uniform mat4 normalMat;
 uniform mat4 shadowMVP;
+uniform float heightMap;
+
 layout (binding=0) uniform sampler2DShadow shadowTex;
 layout (binding=1) uniform sampler2D tex_normal;
 layout (binding=2) uniform sampler2D tex_texture;

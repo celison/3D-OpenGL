@@ -1,22 +1,20 @@
-package a3.objects;
+package a4.objects;
 
-import a3.ImportedModel;
-import a3.shapes.Sphere;
-import com.jogamp.opengl.GLAutoDrawable;
+import a4.shapes.ImportedModel;
 import graphicslib3D.Material;
 import graphicslib3D.Matrix3D;
-import graphicslib3D.MatrixStack;
 
 /**
  * Created by Connor on 11/11/2015.
  */
-public class SpaceShip extends InstancedObject {
-    private final String modelPath = "src/a3/shuttle.obj";
-    private final String texturePath = "src/a3/spaceRock.jpg";
-    public SpaceShip() {
-        super(27);
+public class Bee extends WorldObject {
+    private final String modelPath = "src/a4/bee_04.obj";
+    private final String texturePath = "src/a4/colour.png";
+    public Bee() {
         myShape = new ImportedModel(modelPath);
         myMaterial = Material.SILVER;
+        transparent = true;
+        normalURL = "src/a4/normal2.jpg";
         setTextureURL(texturePath);
         setTranslationRate(0,.0,0);
         setRotationRate(0,0,0);

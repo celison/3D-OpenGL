@@ -1,7 +1,7 @@
 package a4;
 
-import a3.shapes.Sphere;
 import a4.objects.Ball;
+import a4.objects.Bee;
 import a4.objects.WorldObject;
 import com.jogamp.opengl.*;
 import com.jogamp.opengl.awt.GLCanvas;
@@ -37,6 +37,11 @@ public class ShadowFrame extends JFrame
     private int lightPointRenderingProgram;
     private int axisRenderingProgram;
     private int skydomeRenderingProgram;
+    private int tessRenderingProgram;
+
+    private int groundColorTex;
+    private int groundHeightTex;
+    private int groundNormalTex;
 
     private int startX, startY;
 
@@ -54,18 +59,20 @@ public class ShadowFrame extends JFrame
     private Material currentMaterial;
     private MatrixStack mvStack;
     private Matrix3D pMat;
+    private Matrix3D b = new Matrix3D();
+    private Matrix3D mvp = new Matrix3D();
+
     private float[] globalAmbient = new float[]{0.3f, 0.3f, 0.3f, 1.0f};
 
     //shadow stuff
     private int scSizeX, scSizeY;
     private int[] shadow_tex = new int[1];
     private int[] shadow_buffer = new int[1];
-    private Matrix3D b = new Matrix3D();
 
     private Ball mySphere;
     private TextureReader tr;
 
-    private int noiseHeight= 200;
+    private int noiseHeight = 200;
     private int noiseWidth = 200;
     private int noiseDepth = 200;
     private double[][][] noise = new double[noiseHeight][noiseWidth][noiseDepth];
@@ -79,8 +86,10 @@ public class ShadowFrame extends JFrame
     private static final String SECOND_FRAG_SOURCE = "src/a4/blinnFrag2.shader";
     private static final String SECOND_VERT_SOURCE = "src/a4/blinnVert2.shader";
 
+    private static final String TESS_VERT_SOURCE = "src/a4/vert.shader";
     private static final String TES_SOURCE = "src/a4/tessE.shader";
     private static final String TCS_SOURCE = "src/a4/tessC.shader";
+    private static final String TESS_FRAG_SOURCE = "src/a4/frag.shader";
 
     private static final String AXIS_FRAG_SOURCE = "src/a4/fragAxis.shader";
     private static final String AXIS_VERT_SOURCE = "src/a4/vertAxis.shader";
@@ -113,7 +122,8 @@ public class ShadowFrame extends JFrame
         myCanvas.addMouseWheelListener(this);
 
         worldObjectList = new Vector<>();
-        for (int i = 0; i < 5; i++) {
+        worldObjectList.add(new Bee());
+        for (int i = 0; i < 27; i++) {
             Ball ball = new Ball();
             int x = i % 3;
             int z = (i / 3) % 3;
@@ -121,6 +131,7 @@ public class ShadowFrame extends JFrame
             ball.translate(x - 0.5, y, z);
             worldObjectList.add(ball);
         }
+
 
         FPSAnimator animator = new FPSAnimator(myCanvas, 30);
         animator.start();
@@ -179,7 +190,7 @@ public class ShadowFrame extends JFrame
         boolean doTessellation = tcsSource != null && tesSource != null;
 
         System.out.print("Reading " + vertSource + " and " + fragSource);
-        if (doTessellation) System.out.print(" and " + tcsSource + " and " + tesSource  );
+        if (doTessellation) System.out.print(" and " + tcsSource + " and " + tesSource);
         System.out.print("\n");
 
         String vshaderSource[] = util.readShaderSource(vertSource);
@@ -214,13 +225,6 @@ public class ShadowFrame extends JFrame
             System.out.println("Vertex compilation success.");
         else
             System.out.println("Vertex compilation failed.");
-
-        gl.glCompileShader(fShader);
-        gl.glGetShaderiv(fShader, GL4.GL_COMPILE_STATUS, fragCompiled, 0);
-        if (fragCompiled[0] == 1)
-            System.out.println("Fragment compilation success.");
-        else
-            System.out.println("Fragment compilation failed.");
 
         if (doTessellation) {
             int[] tescCompiled = new int[1];
@@ -257,6 +261,13 @@ public class ShadowFrame extends JFrame
             else
                 System.out.println("Tessellation evaluation shader compilation failed.");
         }
+        gl.glCompileShader(fShader);
+        gl.glGetShaderiv(fShader, GL4.GL_COMPILE_STATUS, fragCompiled, 0);
+        if (fragCompiled[0] == 1)
+            System.out.println("Fragment compilation success.");
+        else
+            System.out.println("Fragment compilation failed.");
+
 
         if ((vertCompiled[0] != 1) || (fragCompiled[0] != 1)) {
             System.out.println("Compilation error; return flags:");
@@ -266,11 +277,11 @@ public class ShadowFrame extends JFrame
 
         int rendering_program = gl.glCreateProgram();
         gl.glAttachShader(rendering_program, vShader);
-        gl.glAttachShader(rendering_program, fShader);
         if (doTessellation) {
             gl.glAttachShader(rendering_program, tessCShader);
             gl.glAttachShader(rendering_program, tessEShader);
         }
+        gl.glAttachShader(rendering_program, fShader);
         gl.glLinkProgram(rendering_program);
         util.printOpenGLError(drawable);
         gl.glGetProgramiv(rendering_program, GL4.GL_LINK_STATUS, linked, 0);
@@ -381,29 +392,30 @@ public class ShadowFrame extends JFrame
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
 
-    private void fillDataArray(byte data[])
-    { for (int i=0; i<noiseHeight; i++)
-    { for (int j=0; j<noiseWidth; j++)
-    { for (int k=0; k<noiseDepth; k++)
-    { // clouds (same as above with blue hue)
-        float hue = 240/360.0f;
-        float sat = (float) turbulence(i,j,k,32) / 256.0f;
-        float bri = 100/100.0f;
-        int rgb = Color.HSBtoRGB(hue, sat, bri);
-        Color c = new Color(rgb);
-        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+0] = (byte) c.getRed();
-        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+1] = (byte) c.getGreen();
-        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+2] = (byte) c.getBlue();
-        data[i*(noiseWidth*noiseHeight*4)+j*(noiseHeight*4)+k*4+3] = (byte) 0;
-    } } } }
+    private void fillDataArray(byte data[]) {
+        for (int i = 0; i < noiseHeight; i++) {
+            for (int j = 0; j < noiseWidth; j++) {
+                for (int k = 0; k < noiseDepth; k++) { // clouds (same as above with blue hue)
+                    float hue = 240 / 360.0f;
+                    float sat = (float) turbulence(i, j, k, 32) / 256.0f;
+                    float bri = 100 / 100.0f;
+                    int rgb = Color.HSBtoRGB(hue, sat, bri);
+                    Color c = new Color(rgb);
+                    data[i * (noiseWidth * noiseHeight * 4) + j * (noiseHeight * 4) + k * 4 + 0] = (byte) c.getRed();
+                    data[i * (noiseWidth * noiseHeight * 4) + j * (noiseHeight * 4) + k * 4 + 1] = (byte) c.getGreen();
+                    data[i * (noiseWidth * noiseHeight * 4) + j * (noiseHeight * 4) + k * 4 + 2] = (byte) c.getBlue();
+                    data[i * (noiseWidth * noiseHeight * 4) + j * (noiseHeight * 4) + k * 4 + 3] = (byte) 0;
+                }
+            }
+        }
+    }
 
-    private int loadNoiseTexture(GLAutoDrawable drawable)
-    {	GL4 gl = (GL4) drawable.getGL();
+    private int loadNoiseTexture(GLAutoDrawable drawable) {
+        GL4 gl = (GL4) drawable.getGL();
 
+        byte[] data = new byte[noiseHeight * noiseWidth * noiseDepth * 4];
 
-        byte[] data = new byte[noiseHeight*noiseWidth*noiseDepth*4];
-
-        ByteBuffer bb = ByteBuffer.allocate(noiseHeight*noiseWidth*noiseDepth*4);
+        ByteBuffer bb = ByteBuffer.allocate(noiseHeight * noiseWidth * noiseDepth * 4);
 
         fillDataArray(data);
 
@@ -423,53 +435,55 @@ public class ShadowFrame extends JFrame
         return textureID;
     }
 
-    void generateNoise()
-    {	for (int x=0; x<noiseHeight; x++)
-    {	for (int y=0; y<noiseWidth; y++)
-    {	for (int z=0; z<noiseDepth; z++)
-    {	noise[x][y][z] = random.nextDouble();
-    }	}	}	}
+    void generateNoise() {
+        for (int x = 0; x < noiseHeight; x++) {
+            for (int y = 0; y < noiseWidth; y++) {
+                for (int z = 0; z < noiseDepth; z++) {
+                    noise[x][y][z] = random.nextDouble();
+                }
+            }
+        }
+    }
 
-    double smoothNoise(double x1, double y1, double z1)
-    {	//get fractional part of x, y, and z
+    double smoothNoise(double x1, double y1, double z1) {    //get fractional part of x, y, and z
         double fractX = x1 - (int) x1;
         double fractY = y1 - (int) y1;
         double fractZ = z1 - (int) z1;
 
         //neighbor values
-        int x2 = ((int)x1 + noiseWidth - 1) % noiseWidth;
-        int y2 = ((int)y1 + noiseHeight- 1) % noiseHeight;
-        int z2 = ((int)z1 + noiseDepth - 1) % noiseDepth;
+        int x2 = ((int) x1 + noiseWidth - 1) % noiseWidth;
+        int y2 = ((int) y1 + noiseHeight - 1) % noiseHeight;
+        int z2 = ((int) z1 + noiseDepth - 1) % noiseDepth;
 
         //smooth the noise by interpolating
         double value = 0.0;
-        value += fractX     * fractY     * fractZ     * noise[(int)x1][(int)y1][(int)z1];
-        value += fractX     * (1-fractY) * fractZ     * noise[(int)x1][(int)y2][(int)z1];
-        value += (1-fractX) * fractY     * fractZ     * noise[(int)x2][(int)y1][(int)z1];
-        value += (1-fractX) * (1-fractY) * fractZ     * noise[(int)x2][(int)y2][(int)z1];
+        value += fractX * fractY * fractZ * noise[(int) x1][(int) y1][(int) z1];
+        value += fractX * (1 - fractY) * fractZ * noise[(int) x1][(int) y2][(int) z1];
+        value += (1 - fractX) * fractY * fractZ * noise[(int) x2][(int) y1][(int) z1];
+        value += (1 - fractX) * (1 - fractY) * fractZ * noise[(int) x2][(int) y2][(int) z1];
 
-        value += fractX     * fractY     * (1-fractZ) * noise[(int)x1][(int)y1][(int)z2];
-        value += fractX     * (1-fractY) * (1-fractZ) * noise[(int)x1][(int)y2][(int)z2];
-        value += (1-fractX) * fractY     * (1-fractZ) * noise[(int)x2][(int)y1][(int)z2];
-        value += (1-fractX) * (1-fractY) * (1-fractZ) * noise[(int)x2][(int)y2][(int)z2];
+        value += fractX * fractY * (1 - fractZ) * noise[(int) x1][(int) y1][(int) z2];
+        value += fractX * (1 - fractY) * (1 - fractZ) * noise[(int) x1][(int) y2][(int) z2];
+        value += (1 - fractX) * fractY * (1 - fractZ) * noise[(int) x2][(int) y1][(int) z2];
+        value += (1 - fractX) * (1 - fractY) * (1 - fractZ) * noise[(int) x2][(int) y2][(int) z2];
 
         return value;
     }
 
-    private double turbulence(double x, double y, double z, double size)
-    {	double value = 0.0, initialSize = size;
-        while(size >= 0.9)
-        {	value = value + smoothNoise(x/size, y/size, z/size) * size;
+    private double turbulence(double x, double y, double z, double size) {
+        double value = 0.0, initialSize = size;
+        while (size >= 0.9) {
+            value = value + smoothNoise(x / size, y / size, z / size) * size;
             size = size / 2.0;
         }
-        value = value/initialSize;
+        value = value / initialSize;
         value = 256.0 * logistic(value * 128.0 - 120.0);
         return value;
     }
 
-    private double logistic(double x)
-    {	double k = 0.2;
-        return (1.0/(1.0+Math.pow(2.718,-k*x)));
+    private double logistic(double x) {
+        double k = 0.2;
+        return (1.0 / (1.0 + Math.pow(2.718, -k * x)));
     }
 
     //Overloaded Methods
@@ -481,6 +495,20 @@ public class ShadowFrame extends JFrame
         System.out.println("OPEN GL VERSION: " + gl.glGetString(GL_VERSION));
 
         vbo = new int[3 + (4 * worldObjectList.size())];
+        cameraTranslation = new Matrix3D();
+        cameraRotation = new Matrix3D();
+        generateNoise();
+        cloudTextureID = loadNoiseTexture(drawable);
+        mvStack = new MatrixStack(20);
+
+        groundColorTex = tr.loadTexture(drawable, "src/a4/moon.jpg");
+        groundHeightTex = tr.loadTexture(drawable, "src/a4/height.jpg");
+        groundNormalTex = tr.loadTexture(drawable, "src/a4/normal.jpg");
+
+        // instantiate positional light and set location (using default amb, diff, spec settings)
+        pl = new PositionalLight();
+        plocation = new Point3D(0, 0, 5);
+        pl.setPosition(plocation);
 
         // create shader programs
         renderingProgram1 = createShaderProgram(drawable, FIRST_VERT_SOURCE, FIRST_FRAG_SOURCE);
@@ -488,23 +516,13 @@ public class ShadowFrame extends JFrame
         axisRenderingProgram = createShaderProgram(drawable, AXIS_VERT_SOURCE, AXIS_FRAG_SOURCE);
         lightPointRenderingProgram = createShaderProgram(drawable, LIGHT_VERT_SOURCE, LIGHT_FRAG_SOURCE);
         skydomeRenderingProgram = createShaderProgram(drawable, SKYDOME_VERT_SOURCE, SKYDOME_FRAG_SOURCE);
+        tessRenderingProgram = createShaderProgram(drawable, TESS_VERT_SOURCE, TCS_SOURCE, TES_SOURCE, TESS_FRAG_SOURCE);
 
         IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM1, renderingProgram1);
         IdentityLocs.put(IdentityLocs.RENDERING_PROGRAM2, renderingProgram2);
 
-        cameraTranslation = new Matrix3D();
-        cameraRotation = new Matrix3D();
-
         setupVerticies(gl);
         setupShadowBuffers(drawable);
-        // instantiate positional light and set location (using default amb, diff, spec settings)
-        pl = new PositionalLight();
-        plocation = new Point3D(0, 0, 5);
-        pl.setPosition(plocation);
-
-        cloudTextureID = loadNoiseTexture(drawable);
-
-        mvStack = new MatrixStack(20);
 
         // init world objects
         for (WorldObject worldObject : worldObjectList) {
@@ -529,7 +547,6 @@ public class ShadowFrame extends JFrame
         b.setElementAt(3, 3, 1.0f);
 
         // set camera position
-
         float cameraX = 0.0f;
         float cameraY = -0.5f;
         float cameraZ = 8.0f;
@@ -558,7 +575,7 @@ public class ShadowFrame extends JFrame
         float aspect = myCanvas.getWidth() / myCanvas.getHeight();
         pMat = perspective(50.0f, aspect, 0.1f, 1000.0f);
 
-        MatrixStack mvStack = new MatrixStack(20);
+        mvStack = new MatrixStack(20);
         // setup view matrix
         mvStack.pushMatrix();
         mvStack.multMatrix(cameraRotation);
@@ -569,24 +586,9 @@ public class ShadowFrame extends JFrame
         // Skydome
 
         drawSkydome(drawable);
-
         mvStack.multMatrix(cameraTranslation);
 
-        if (showAxis) {
-            gl.glUseProgram(axisRenderingProgram);
-            mvLoc = gl.glGetUniformLocation(axisRenderingProgram, "mv_matrix");
-            projLoc = gl.glGetUniformLocation(axisRenderingProgram, "proj_matrix");
-
-            gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
-            gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
-
-            gl.glClear(GL_DEPTH_BUFFER_BIT);
-
-            gl.glDrawArrays(GL_LINES, 0, 6);
-        }
-
-        // Draw Light Source
-
+        drawTessGrid(drawable);
 
         gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
         gl.glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex[0], 0);
@@ -619,6 +621,8 @@ public class ShadowFrame extends JFrame
             installLights(mvStack.peek(), drawable);
             worldObject.secondPass(drawable, mvStack.peek(), pMat, b, lightV_matrix);
         }
+
+
         if (showPosLight) {
             gl.glUseProgram(lightPointRenderingProgram);
             mvLoc = gl.glGetUniformLocation(lightPointRenderingProgram, "mv_matrix");
@@ -646,6 +650,52 @@ public class ShadowFrame extends JFrame
             gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getShape().getIndices().length);
             mvStack.popMatrix();
         }
+        if (showAxis) {
+            gl.glUseProgram(axisRenderingProgram);
+            mvLoc = gl.glGetUniformLocation(axisRenderingProgram, "mv_matrix");
+            projLoc = gl.glGetUniformLocation(axisRenderingProgram, "proj_matrix");
+
+            gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
+            gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
+
+            gl.glClear(GL_DEPTH_BUFFER_BIT);
+
+            gl.glDrawArrays(GL_LINES, 0, 6);
+        }
+    }
+
+    private void drawTessGrid(GLAutoDrawable drawable) {
+        GL4 gl = (GL4) drawable.getGL();
+        gl.glUseProgram(tessRenderingProgram);
+
+        mvp.setToIdentity();
+        mvp.concatenate(pMat);
+        mvp.concatenate(mvStack.peek());
+
+        int mvLoc = gl.glGetUniformLocation(tessRenderingProgram, "mv_matrix");
+        int projLoc = gl.glGetUniformLocation(tessRenderingProgram, "proj_matrix");
+        int nLoc = gl.glGetUniformLocation(tessRenderingProgram, "normalMat");
+        int mvpLoc = gl.glGetUniformLocation(tessRenderingProgram, "mvp");
+
+        gl.glUniformMatrix4fv(mvpLoc, 1, false, mvp.getFloatValues(), 0);
+        gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
+        gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
+        gl.glUniformMatrix4fv(nLoc, 1, false, (mvStack.peek().inverse()).transpose().getFloatValues(), 0);
+
+        gl.glActiveTexture(gl.GL_TEXTURE0);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, groundColorTex);
+        gl.glActiveTexture(gl.GL_TEXTURE1);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, groundHeightTex);
+        gl.glActiveTexture(gl.GL_TEXTURE2);
+        gl.glBindTexture(gl.GL_TEXTURE_2D, groundNormalTex);
+
+        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        gl.glEnable(GL_DEPTH_TEST);
+        gl.glFrontFace(GL_CCW);
+
+        gl.glPatchParameteri(GL_PATCH_VERTICES, 4);
+        gl.glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        gl.glDrawArraysInstanced(GL_PATCHES, 0, 4, 64 * 64);
     }
 
     private void drawSkydome(GLAutoDrawable drawable) {
@@ -656,10 +706,15 @@ public class ShadowFrame extends JFrame
         int projLoc = gl.glGetUniformLocation(skydomeRenderingProgram, "proj_matrix");
         int frame = gl.glGetUniformLocation(skydomeRenderingProgram, "d");
 
-        cloudFrame = cloudFrame + 0.000025f; if (cloudFrame>=1.0f) cloudFrame=0.0f;
+        mvStack.pushMatrix();
+        double amt = (System.currentTimeMillis() % 360000) / 1000.0;
+        mvStack.rotate(amt, 0, 1, 0);
+        cloudFrame = cloudFrame + 0.000025f;
+        if (cloudFrame >= 1.0f) cloudFrame = 0.0f;
         gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
         gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
-        gl.glUniform1f(frame, cloudFrame );
+        gl.glUniform1f(frame, cloudFrame);
+        mvStack.popMatrix();
 
         gl.glActiveTexture(GL.GL_TEXTURE0);
         gl.glBindTexture(gl.GL_TEXTURE_3D, cloudTextureID);

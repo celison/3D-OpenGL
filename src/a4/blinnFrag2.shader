@@ -23,6 +23,8 @@ uniform mat4 mv_matrix;
 uniform mat4 proj_matrix;
 uniform mat4 normalMat;
 uniform mat4 shadowMVP;
+uniform float heightMap;
+uniform float alpha;
 
 layout (binding=0) uniform sampler2DShadow shadowTex;
 layout (binding=1) uniform sampler2D tex_normal;
@@ -46,7 +48,11 @@ vec3 CalcBumpedNormal()
 
 void main(void)
 {	vec3 L = normalize(vLightDir);
-	vec3 N = CalcBumpedNormal();
+	vec3 N;
+	if (heightMap == 1.0)
+		N = CalcBumpedNormal();
+	else
+		N = normalize(vNormal);
 	vec3 V = normalize(-vVertPos);
 	vec3 H = normalize(vHalfVec);
 
@@ -64,4 +70,8 @@ void main(void)
 	}
 
 	fragColor = fragColor * 0.5 + texColor * 0.5;
+
+	if (texColor.a != 1.0) {
+		fragColor.a = texColor.a *= alpha;
+	}
 }

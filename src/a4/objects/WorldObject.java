@@ -28,6 +28,8 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
     protected int texture, normal;
     protected Matrix3D shadowMVP1, shadowMVP2, m_matrix, mv_matrix;
     protected String textureURL, normalURL;
+    protected boolean heightMap = false;
+    protected boolean transparent = false;
 
     protected Vector<IGLDrawable> orbitList;
 
@@ -127,6 +129,7 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         float[] tvalues = new float[indices.length * 2];
         float[] nvalues = new float[indices.length * 3];
         float[] tanvalues = new float[indices.length * 3];
+        float lastx = 0, lasty = 0, lastz = 0;
 
         for (int i = 0; i < indices.length; i++) {
             fvalues[i * 3] = (float) (vertices[indices[i]]).getX();
@@ -137,9 +140,18 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
             nvalues[i * 3] = (float) (vertices[indices[i]]).getNormalX();
             nvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getNormalY();
             nvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getNormalZ();
-            tanvalues[i * 3] = (float) (vertices[indices[i]]).getTangent().getX();
-            tanvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getTangent().getY();
-            tanvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getTangent().getZ();
+            if (vertices[indices[i]].getTangent() != null) {
+                tanvalues[i * 3] = (float) (vertices[indices[i]]).getTangent().getX();
+                tanvalues[i * 3 + 1] = (float) (vertices[indices[i]]).getTangent().getY();
+                tanvalues[i * 3 + 2] = (float) (vertices[indices[i]]).getTangent().getZ();
+            } else {
+                tanvalues[i * 3] = lastx - fvalues[i * 3];
+                tanvalues[i * 3 + 1] = lasty - fvalues[i * 3 + 1];
+                tanvalues[i * 3 + 2] = lastz - fvalues[i * 3 + 2];
+                lastx = fvalues[i * 3];
+                lasty = fvalues[i * 3 + 1];
+                lastz = fvalues[i * 3 + 2];
+            }
         }
 
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index++]);
@@ -164,7 +176,9 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         return myMaterial;
     }
 
-    public void setMaterial(Material m) { myMaterial = m;}
+    public void setMaterial(Material m) {
+        myMaterial = m;
+    }
 
     public void firstPass(GLAutoDrawable drawable, Matrix3D lightV_matrix, Matrix3D lightP_matrix) {
         GL4 gl = (GL4) drawable.getGL();
@@ -205,13 +219,14 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
         rotate(dxRotate, dyRotate, dzRotate);
 
-        // draw the torus
+        // draw the object
 
-        mv_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "mv_matrix");
-        proj_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "proj_matrix");
-        n_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "normalMat");
-        int shadow_location = gl.glGetUniformLocation(IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2), "shadowMVP");
-
+        int rendering_program2 = IdentityLocs.get(IdentityLocs.RENDERING_PROGRAM2);
+        mv_location = gl.glGetUniformLocation(rendering_program2, "mv_matrix");
+        proj_location = gl.glGetUniformLocation(rendering_program2, "proj_matrix");
+        n_location = gl.glGetUniformLocation(rendering_program2, "normalMat");
+        int shadow_location = gl.glGetUniformLocation(rendering_program2, "shadowMVP");
+        int height_location = gl.glGetUniformLocation(rendering_program2, "heightMap");
         //  build the MODEL matrix
         m_matrix.setToIdentity();
         m_matrix.concatenate(getTranslation());
@@ -234,6 +249,7 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
         gl.glUniformMatrix4fv(proj_location, 1, false, proj_mat.getFloatValues(), 0);
         gl.glUniformMatrix4fv(n_location, 1, false, (mv_matrix.inverse()).transpose().getFloatValues(), 0);
         gl.glUniformMatrix4fv(shadow_location, 1, false, shadowMVP2.getFloatValues(), 0);
+        gl.glUniform1f(height_location, (heightMap) ? 1.0f : 0.0f);
 
         // set up vertices buffer
         gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo[index]);
@@ -260,12 +276,54 @@ public abstract class WorldObject extends Shape3D implements IGLDrawable {
 
         gl.glActiveTexture(gl.GL_TEXTURE2);
         gl.glBindTexture(gl.GL_TEXTURE_2D, texture);
+        if (transparent) {
+            int a_location = gl.glGetUniformLocation(rendering_program2, "alpha");
 
-        gl.glEnable(GL_CULL_FACE);
-        gl.glFrontFace(GL_CCW);
-        gl.glEnable(GL_DEPTH_TEST);
-        gl.glDepthFunc(GL_LEQUAL);
+            float alpha = 0.4f;
+            float factor = 0.75f;
 
-        gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+            gl.glEnable(GL_BLEND);
+            gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            gl.glBlendEquation(GL_FUNC_ADD);
+
+            gl.glDisable(GL_CULL_FACE);
+            gl.glDepthFunc(GL_LESS);
+            gl.glProgramUniform1f(rendering_program2, a_location, 0.0f);
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+            gl.glEnable(GL_CULL_FACE);
+            gl.glCullFace(GL_FRONT);
+            gl.glDepthFunc(GL_ALWAYS);
+            gl.glProgramUniform1f(rendering_program2, a_location, factor*alpha);
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+            gl.glEnable(GL_CULL_FACE);
+            gl.glCullFace(GL_FRONT);
+            gl.glDepthFunc(GL_LEQUAL);
+            gl.glProgramUniform1f(rendering_program2, a_location, (alpha-factor*alpha)/(1.0f-factor*alpha));
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+            gl.glEnable(GL_CULL_FACE);
+            gl.glCullFace(GL_BACK);
+            gl.glDepthFunc(GL_ALWAYS);
+            gl.glProgramUniform1f(rendering_program2, a_location, factor*alpha);
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+            //gl.glEnable(GL_CULL_FACE);	//These two, try with and without
+            //gl.glCullFace(GL_BACK);
+            gl.glDisable(GL_CULL_FACE);
+            gl.glDepthFunc(GL_LEQUAL);
+            gl.glProgramUniform1f(rendering_program2, a_location, (alpha-factor*alpha)/(1.0f-factor*alpha));
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+
+            gl.glDisable(GL_BLEND);
+        } else {
+            gl.glEnable(GL_CULL_FACE);
+            gl.glFrontFace(GL_CCW);
+            gl.glEnable(GL_DEPTH_TEST);
+            gl.glDepthFunc(GL_LEQUAL);
+
+            gl.glDrawArrays(GL_TRIANGLES, 0, myShape.getIndices().length);
+        }
     }
 }
