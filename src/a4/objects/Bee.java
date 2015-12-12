@@ -14,7 +14,7 @@ public class Bee extends WorldObject {
         myShape = new ImportedModel(modelPath);
         myMaterial = Material.SILVER;
         transparent = true;
-        normalURL = "src/a4/normal2.jpg";
+        normalURL = "src/a4/normal.jpg";
         setTextureURL(texturePath);
         setTranslationRate(0,.0,0);
         setRotationRate(0,0,0);
@@ -22,7 +22,7 @@ public class Bee extends WorldObject {
         scale.scale(1,1,1);
         setScale(scale);
         Matrix3D startPos = new Matrix3D();
-        startPos.translate(-3,-3,-3);
+        startPos.translate(-3,3,-3);
         setTranslation(startPos);
     }
 }

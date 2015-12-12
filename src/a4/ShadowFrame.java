@@ -17,9 +17,32 @@ import java.nio.FloatBuffer;
 import java.util.Random;
 import java.util.Vector;
 
-import static com.jogamp.opengl.GL.*;
-import static com.jogamp.opengl.GL4.*;
+import static com.jogamp.opengl.GL.GL_CCW;
+import static com.jogamp.opengl.GL.GL_CLAMP_TO_EDGE;
+import static com.jogamp.opengl.GL.GL_CULL_FACE;
+import static com.jogamp.opengl.GL.GL_CW;
+import static com.jogamp.opengl.GL.GL_DEPTH_ATTACHMENT;
+import static com.jogamp.opengl.GL.GL_DEPTH_BUFFER_BIT;
+import static com.jogamp.opengl.GL.GL_DEPTH_COMPONENT32;
+import static com.jogamp.opengl.GL.GL_DEPTH_TEST;
+import static com.jogamp.opengl.GL.GL_FLOAT;
+import static com.jogamp.opengl.GL.GL_FRAMEBUFFER;
+import static com.jogamp.opengl.GL.GL_FRONT_AND_BACK;
+import static com.jogamp.opengl.GL.GL_LEQUAL;
+import static com.jogamp.opengl.GL.GL_LINEAR;
+import static com.jogamp.opengl.GL.GL_LINES;
+import static com.jogamp.opengl.GL.GL_POLYGON_OFFSET_FILL;
+import static com.jogamp.opengl.GL.GL_RGBA;
+import static com.jogamp.opengl.GL.GL_RGBA8;
+import static com.jogamp.opengl.GL.GL_TEXTURE_2D;
+import static com.jogamp.opengl.GL.GL_TEXTURE_MAG_FILTER;
+import static com.jogamp.opengl.GL.GL_TEXTURE_MIN_FILTER;
+import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_S;
+import static com.jogamp.opengl.GL.GL_TEXTURE_WRAP_T;
+import static com.jogamp.opengl.GL.GL_TRIANGLES;
+import static com.jogamp.opengl.GL.GL_VERSION;
 import static com.jogamp.opengl.GL2ES3.GL_COLOR;
+import static com.jogamp.opengl.GL4.*;
 
 /**
  * Created by Connor on 12/4/2015.
@@ -122,7 +145,6 @@ public class ShadowFrame extends JFrame
         myCanvas.addMouseWheelListener(this);
 
         worldObjectList = new Vector<>();
-        worldObjectList.add(new Bee());
         for (int i = 0; i < 27; i++) {
             Ball ball = new Ball();
             int x = i % 3;
@@ -131,6 +153,7 @@ public class ShadowFrame extends JFrame
             ball.translate(x - 0.5, y, z);
             worldObjectList.add(ball);
         }
+        worldObjectList.add(new Bee());
 
 
         FPSAnimator animator = new FPSAnimator(myCanvas, 30);
@@ -219,7 +242,6 @@ public class ShadowFrame extends JFrame
         gl.glShaderSource(fShader, fshaderSource.length, fshaderSource, lengths, 0);
 
         gl.glCompileShader(vShader);
-        util.printOpenGLError(drawable);
         gl.glGetShaderiv(vShader, GL4.GL_COMPILE_STATUS, vertCompiled, 0);
         if (vertCompiled[0] == 1)
             System.out.println("Vertex compilation success.");
@@ -258,8 +280,10 @@ public class ShadowFrame extends JFrame
             gl.glGetShaderiv(tessEShader, GL4.GL_COMPILE_STATUS, teseCompiled, 0);
             if (teseCompiled[0] == 1)
                 System.out.println("Tessellation evaluation shader compilation success.");
-            else
+            else {
                 System.out.println("Tessellation evaluation shader compilation failed.");
+                util.printShaderInfoLog(drawable, tessEShader);
+            }
         }
         gl.glCompileShader(fShader);
         gl.glGetShaderiv(fShader, GL4.GL_COMPILE_STATUS, fragCompiled, 0);
@@ -267,7 +291,6 @@ public class ShadowFrame extends JFrame
             System.out.println("Fragment compilation success.");
         else
             System.out.println("Fragment compilation failed.");
-
 
         if ((vertCompiled[0] != 1) || (fragCompiled[0] != 1)) {
             System.out.println("Compilation error; return flags:");
@@ -341,7 +364,7 @@ public class ShadowFrame extends JFrame
 
     }
 
-    private void installLights(Matrix3D v_matrix, GLAutoDrawable drawable) {
+    private void installLights(Matrix3D v_matrix, GLAutoDrawable drawable, int rendProg) {
         GL4 gl = (GL4) drawable.getGL();
 
         // get light position
@@ -349,28 +372,28 @@ public class ShadowFrame extends JFrame
         Point3D lightPv = plocation.mult(v_matrix);
         float[] currLightPos = new float[]{(float) lightPv.getX(), (float) lightPv.getY(), (float) lightPv.getZ()};
 
-        int globalAmbLoc = gl.glGetUniformLocation(renderingProgram2, "globalAmbient");
-        gl.glProgramUniform4fv(renderingProgram2, globalAmbLoc, 1, globalAmbient, 0);
+        int globalAmbLoc = gl.glGetUniformLocation(rendProg, "globalAmbient");
+        gl.glProgramUniform4fv(rendProg, globalAmbLoc, 1, globalAmbient, 0);
 
         // get the locations of the light and material fields in the shader
-        int ambLoc = gl.glGetUniformLocation(renderingProgram2, "light.ambient");
-        int diffLoc = gl.glGetUniformLocation(renderingProgram2, "light.diffuse");
-        int specLoc = gl.glGetUniformLocation(renderingProgram2, "light.specular");
-        int posLoc = gl.glGetUniformLocation(renderingProgram2, "light.position");
-        int MambLoc = gl.glGetUniformLocation(renderingProgram2, "material.ambient");
-        int MdiffLoc = gl.glGetUniformLocation(renderingProgram2, "material.diffuse");
-        int MspecLoc = gl.glGetUniformLocation(renderingProgram2, "material.specular");
-        int MshiLoc = gl.glGetUniformLocation(renderingProgram2, "material.shininess");
+        int ambLoc = gl.glGetUniformLocation(rendProg, "light.ambient");
+        int diffLoc = gl.glGetUniformLocation(rendProg, "light.diffuse");
+        int specLoc = gl.glGetUniformLocation(rendProg, "light.specular");
+        int posLoc = gl.glGetUniformLocation(rendProg, "light.position");
+        int MambLoc = gl.glGetUniformLocation(rendProg, "material.ambient");
+        int MdiffLoc = gl.glGetUniformLocation(rendProg, "material.diffuse");
+        int MspecLoc = gl.glGetUniformLocation(rendProg, "material.specular");
+        int MshiLoc = gl.glGetUniformLocation(rendProg, "material.shininess");
 
         // set the uniform light and material values in the shader
-        gl.glProgramUniform4fv(renderingProgram2, ambLoc, 1, pl.getAmbient(), 0);
-        gl.glProgramUniform4fv(renderingProgram2, diffLoc, 1, pl.getDiffuse(), 0);
-        gl.glProgramUniform4fv(renderingProgram2, specLoc, 1, pl.getSpecular(), 0);
-        gl.glProgramUniform3fv(renderingProgram2, posLoc, 1, currLightPos, 0);
-        gl.glProgramUniform4fv(renderingProgram2, MambLoc, 1, currentMaterial.getAmbient(), 0);
-        gl.glProgramUniform4fv(renderingProgram2, MdiffLoc, 1, currentMaterial.getDiffuse(), 0);
-        gl.glProgramUniform4fv(renderingProgram2, MspecLoc, 1, currentMaterial.getSpecular(), 0);
-        gl.glProgramUniform1f(renderingProgram2, MshiLoc, currentMaterial.getShininess());
+        gl.glProgramUniform4fv(rendProg, ambLoc, 1, pl.getAmbient(), 0);
+        gl.glProgramUniform4fv(rendProg, diffLoc, 1, pl.getDiffuse(), 0);
+        gl.glProgramUniform4fv(rendProg, specLoc, 1, pl.getSpecular(), 0);
+        gl.glProgramUniform3fv(rendProg, posLoc, 1, currLightPos, 0);
+        gl.glProgramUniform4fv(rendProg, MambLoc, 1, currentMaterial.getAmbient(), 0);
+        gl.glProgramUniform4fv(rendProg, MdiffLoc, 1, currentMaterial.getDiffuse(), 0);
+        gl.glProgramUniform4fv(rendProg, MspecLoc, 1, currentMaterial.getSpecular(), 0);
+        gl.glProgramUniform1f(rendProg, MshiLoc, currentMaterial.getShininess());
     }
 
     public void setupShadowBuffers(GLAutoDrawable drawable) {
@@ -500,6 +523,7 @@ public class ShadowFrame extends JFrame
         generateNoise();
         cloudTextureID = loadNoiseTexture(drawable);
         mvStack = new MatrixStack(20);
+        tr = new TextureReader();
 
         groundColorTex = tr.loadTexture(drawable, "src/a4/moon.jpg");
         groundHeightTex = tr.loadTexture(drawable, "src/a4/height.jpg");
@@ -588,8 +612,6 @@ public class ShadowFrame extends JFrame
         drawSkydome(drawable);
         mvStack.multMatrix(cameraTranslation);
 
-        drawTessGrid(drawable);
-
         gl.glBindFramebuffer(GL_FRAMEBUFFER, shadow_buffer[0]);
         gl.glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex[0], 0);
 
@@ -616,12 +638,14 @@ public class ShadowFrame extends JFrame
         gl.glDrawBuffer(GL.GL_FRONT);
 
         gl.glClear(GL_DEPTH_BUFFER_BIT);
+
+        drawTessGrid(drawable);
+
         for (WorldObject worldObject : worldObjectList) {
             currentMaterial = worldObject.getMaterial();
-            installLights(mvStack.peek(), drawable);
+            installLights(mvStack.peek(), drawable, renderingProgram2);
             worldObject.secondPass(drawable, mvStack.peek(), pMat, b, lightV_matrix);
         }
-
 
         if (showPosLight) {
             gl.glUseProgram(lightPointRenderingProgram);
@@ -677,6 +701,9 @@ public class ShadowFrame extends JFrame
         int nLoc = gl.glGetUniformLocation(tessRenderingProgram, "normalMat");
         int mvpLoc = gl.glGetUniformLocation(tessRenderingProgram, "mvp");
 
+        currentMaterial = Material.SILVER;
+        installLights(mvStack.peek(), drawable, tessRenderingProgram);
+
         gl.glUniformMatrix4fv(mvpLoc, 1, false, mvp.getFloatValues(), 0);
         gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);
         gl.glUniformMatrix4fv(projLoc, 1, false, pMat.getFloatValues(), 0);
@@ -689,7 +716,7 @@ public class ShadowFrame extends JFrame
         gl.glActiveTexture(gl.GL_TEXTURE2);
         gl.glBindTexture(gl.GL_TEXTURE_2D, groundNormalTex);
 
-        gl.glClear(GL_DEPTH_BUFFER_BIT);
+        //gl.glClear(GL_DEPTH_BUFFER_BIT);
         gl.glEnable(GL_DEPTH_TEST);
         gl.glFrontFace(GL_CCW);
 
@@ -708,7 +735,8 @@ public class ShadowFrame extends JFrame
 
         mvStack.pushMatrix();
         double amt = (System.currentTimeMillis() % 360000) / 1000.0;
-        mvStack.rotate(amt, 0, 1, 0);
+        mvStack.rotate(90, 0, 0 ,1);
+        mvStack.rotate(amt, 1, 0, 0);
         cloudFrame = cloudFrame + 0.000025f;
         if (cloudFrame >= 1.0f) cloudFrame = 0.0f;
         gl.glUniformMatrix4fv(mvLoc, 1, false, mvStack.peek().getFloatValues(), 0);

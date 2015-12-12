@@ -36,7 +36,7 @@ void main (void)
 	vec4 p = mix(p2, p1, gl_TessCoord.y);
 	
 	// add the height from the height map to the vertex:
-	p.y = p.y + (texture2D(tex_height, tc).r)/2.0;
+	p.y = p.y + (texture(tex_height, tc).r)/2.0;
 	
 	gl_Position = mvp * p;
 	tes_out = tc;
